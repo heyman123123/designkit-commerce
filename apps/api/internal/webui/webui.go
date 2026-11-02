@@ -23,6 +23,13 @@ func Mount(r interface {
 	r.Get("/", func(w http.ResponseWriter, req *http.Request) {
 		http.Redirect(w, req, "/app/", http.StatusFound)
 	})
+	// 三个入口不带斜杠时补斜杠，避免相对资源路径错位。
+	for _, prefix := range []string{"/app/", "/admin/", "/m/"} {
+		target := prefix
+		r.Get(strings.TrimSuffix(prefix, "/"), func(w http.ResponseWriter, req *http.Request) {
+			http.Redirect(w, req, target, http.StatusFound)
+		})
+	}
 	r.Handle("/app/*", SPA(filepath.Join(webDir, "app"), "/app/"))
 	r.Handle("/assets/*", Static(filepath.Join(webDir, "assets"), "/assets/"))
 	// 移动端沿用 ../web/assets 相对路径，这里提供别名，避免改两套引用。

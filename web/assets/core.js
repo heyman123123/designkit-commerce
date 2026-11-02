@@ -122,10 +122,15 @@ async function parse(res) {
     }
   }
   if (!res.ok) {
-    const e = data && data.error ? data.error : {};
-    throw new ApiError(e.message || `请求失败（${res.status}）`, {
+    // 后端 httpx.Err 返回扁平结构 { error: "code", message: "中文提示" }；
+    // 少数接口（如代理层）可能返回嵌套的 { error: { code, message } }，两种都兼容。
+    const raw = data ? data.error : null;
+    const flat = typeof raw === 'string' ? raw : '';
+    const nested = raw && typeof raw === 'object' ? raw : {};
+    const message = data && data.message ? data.message : nested.message;
+    throw new ApiError(message || `请求失败（${res.status}）`, {
       status: res.status,
-      code: e.code || 'http_error',
+      code: nested.code || flat || 'http_error',
     });
   }
   return data;

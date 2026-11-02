@@ -122,11 +122,14 @@ async function request(path, { method = 'GET', body } = {}) {
 
   const data = await parseBody(res);
   if (!res.ok) {
-    const e = (data && data.error) || {};
-    const err = new AdminApiError(e.message || `请求失败（${res.status}）`, {
-      status: res.status,
-      code: e.code || 'http_error',
-    });
+    // 后端返回扁平 { error: "code", message: "中文" }，同时兼容嵌套写法。
+    const raw = data ? data.error : null;
+    const flat = typeof raw === 'string' ? raw : '';
+    const nested = raw && typeof raw === 'object' ? raw : {};
+    const err = new AdminApiError(
+      (data && data.message) || nested.message || `请求失败（${res.status}）`,
+      { status: res.status, code: nested.code || flat || 'http_error' },
+    );
     // 后台没有 refresh_token：401 一律回登录；403 仅管理员校验失败时回登录。
     // 登录接口自身的 401/403 是“凭据错误”，必须交给登录页展示，不能触发全局登出。
     const isLoginCall = path === '/v1/admin/auth/login';
