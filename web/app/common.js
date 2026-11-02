@@ -87,9 +87,19 @@ export function connectEvents(onJob) {
   } catch {
     return () => {};
   }
+  // 后端连接建立时会补发最近 2 分钟的任务快照；这里只做「去重 + 宽限」，
+  // 避免页面每次重连都被同一批事件触发重新渲染。
+  const seen = new Map();
+  let armed = false;
+  setTimeout(() => { armed = true; }, 1500);
   es.addEventListener('job', (e) => {
     try {
-      onJob(JSON.parse(e.data));
+      const job = JSON.parse(e.data);
+      const key = [job.id, job.status, job.progress, job.review_status].join('|');
+      const last = seen.get(key) || 0;
+      if (!armed || Date.now() - last < 5000) return;
+      seen.set(key, Date.now());
+      onJob(job);
     } catch {
       /* 忽略单条解析失败 */
     }
