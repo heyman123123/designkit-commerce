@@ -23,7 +23,7 @@ function shellHTML() {
   return `<div class="page-head">
     <div class="ph-main">
       <h1>订阅与计费</h1>
-      <p class="page-sub">套餐定义、订单登记、优惠码。当前为人工开通模式，支付网关尚未接入。</p>
+      <p class="page-sub">套餐定义、订单登记、优惠码。人工开通为主，支付回调已支持（HMAC 统一契约）。</p>
     </div>
     <div class="ph-actions">
       <button class="btn sm" id="b-refresh" type="button">刷新</button>
@@ -34,7 +34,7 @@ function shellHTML() {
     <b>人工开通与对账口径</b>
     <p class="muted small mt-8">
       订单金额以「元」录入、按「分」存储。新建「已支付」订单会立即把套餐配额应用到租户；
-      退款只登记状态，不会自动回收配额。支付网关 webhook、发票与自动续费仍未接入。
+      退款只登记状态，不会自动回收配额。支付回调可按订单推进状态；发票与自动续费仍未接入。
     </p>
   </div>
 
