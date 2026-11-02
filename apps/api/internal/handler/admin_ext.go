@@ -274,12 +274,7 @@ func (h *Handler) AdminCreateOrder(w http.ResponseWriter, r *http.Request) {
 			return err
 		}
 		if status == "paid" {
-			var plan model.Plan
-			if err := tx.First(&plan, "code = ?", req.PlanCode).Error; err == nil {
-				return tx.Model(&model.Workspace{}).Where("id = ?", wsID).Updates(map[string]any{
-					"plan": plan.Code, "sku_quota": plan.SkuQuota, "export_quota": plan.ExportQuota,
-				}).Error
-			}
+			return applyPlanQuota(tx, wsID, req.PlanCode)
 		}
 		return nil
 	})

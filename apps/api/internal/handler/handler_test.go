@@ -30,6 +30,12 @@ type env struct {
 
 func newEnv(t *testing.T) *env {
 	t.Helper()
+	return newEnvWith(t, nil)
+}
+
+// newEnvWith 在构造路由前允许改写配置，用于需要密钥等配置的用例。
+func newEnvWith(t *testing.T, mutate func(*config.Config)) *env {
+	t.Helper()
 	dsn := fmt.Sprintf("file:test-%s?mode=memory&cache=shared", fmt.Sprint(time.Now().UnixNano()))
 	cfg := config.Config{
 		Addr:        ":0",
@@ -42,6 +48,9 @@ func newEnv(t *testing.T) *env {
 		AutoMigrate: true,
 		Env:         "test",
 		MaxUploadMB: 10,
+	}
+	if mutate != nil {
+		mutate(&cfg)
 	}
 	db, err := platform.Open(cfg)
 	if err != nil {

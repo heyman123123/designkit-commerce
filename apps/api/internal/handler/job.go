@@ -179,6 +179,7 @@ func (h *Handler) ReviewJob(w http.ResponseWriter, r *http.Request) {
 }
 
 type usageResp struct {
+	Plan        string              `json:"plan"`
 	SkuQuota    int                 `json:"sku_quota"`
 	SkuUsed     int                 `json:"sku_used"`
 	ExportQuota int                 `json:"export_quota"`
@@ -201,7 +202,7 @@ func (h *Handler) Usage(w http.ResponseWriter, r *http.Request) {
 		Select("COALESCE(SUM(cost_cents),0)").Scan(&cost)
 
 	httpx.JSON(w, http.StatusOK, usageResp{
-		SkuQuota: ws.SkuQuota, SkuUsed: ws.SkuUsed,
+		Plan: ws.Plan, SkuQuota: ws.SkuQuota, SkuUsed: ws.SkuUsed,
 		ExportQuota: ws.ExportQuota, ExportUsed: ws.ExportUsed,
 		CostCents: int(cost), Entries: entries,
 	})

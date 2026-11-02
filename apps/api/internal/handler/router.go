@@ -41,6 +41,8 @@ func NewRouter(d Deps) http.Handler {
 		r.Post("/auth/login", h.Login)
 		r.Post("/auth/refresh", h.Refresh)
 		r.Post("/admin/auth/login", h.AdminLogin)
+		// 支付平台回调：签名校验，不使用用户/管理员令牌。
+		r.Post("/webhooks/payments/{provider}", h.PaymentWebhook)
 
 		r.Group(func(r chi.Router) {
 			r.Use(mw.RequireUser)
@@ -107,6 +109,7 @@ func NewRouter(d Deps) http.Handler {
 
 			r.Get("/orders", h.AdminListOrders)
 			r.Post("/orders", h.AdminCreateOrder)
+			r.Post("/orders/{orderID}/paid", h.AdminMarkOrderPaid)
 			r.Post("/orders/{orderID}/refund", h.AdminRefundOrder)
 
 			r.Get("/coupons", h.AdminListCoupons)

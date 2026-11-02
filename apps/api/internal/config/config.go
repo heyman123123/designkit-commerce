@@ -19,31 +19,34 @@ type Config struct {
 	AdminPass   string
 	AutoMigrate bool
 	PublicURL   string
-	WorkerTick  time.Duration
-	MaxUploadMB int64
-	Env         string
-	WebDir      string
-	MobileDir   string
+	// PaymentWebhookSecret 支付回调校验密钥；未配置时回调接口关闭。
+	PaymentWebhookSecret string
+	WorkerTick           time.Duration
+	MaxUploadMB          int64
+	Env                  string
+	WebDir               string
+	MobileDir            string
 }
 
 func Load() Config {
 	return Config{
-		Addr:        env("APP_ADDR", ":8080"),
-		DBDriver:    env("DB_DRIVER", "sqlite"),
-		DSN:         env("DB_DSN", "file:designkit.db?_pragma=busy_timeout(5000)"),
-		JWTSecret:   env("JWT_SECRET", "dev-insecure-change-me"),
-		AccessTTL:   envDuration("ACCESS_TTL", 30*time.Minute),
-		RefreshTTL:  envDuration("REFRESH_TTL", 30*24*time.Hour),
-		StorageDir:  env("STORAGE_DIR", "./data/storage"),
-		AdminEmail:  env("ADMIN_EMAIL", ""),
-		AdminPass:   env("ADMIN_PASSWORD", ""),
-		AutoMigrate: envBool("AUTO_MIGRATE", true),
-		PublicURL:   env("PUBLIC_URL", "http://localhost:8080"),
-		WorkerTick:  envDuration("WORKER_TICK", 2*time.Second),
-		MaxUploadMB: envInt("MAX_UPLOAD_MB", 25),
-		Env:         env("APP_ENV", "dev"),
-		WebDir:      env("WEB_DIR", "./web"),
-		MobileDir:   env("MOBILE_DIR", "./mobile"),
+		Addr:                 env("APP_ADDR", ":8080"),
+		DBDriver:             env("DB_DRIVER", "sqlite"),
+		DSN:                  env("DB_DSN", "file:designkit.db?_pragma=busy_timeout(5000)"),
+		JWTSecret:            env("JWT_SECRET", "dev-insecure-change-me"),
+		AccessTTL:            envDuration("ACCESS_TTL", 30*time.Minute),
+		RefreshTTL:           envDuration("REFRESH_TTL", 30*24*time.Hour),
+		StorageDir:           env("STORAGE_DIR", "./data/storage"),
+		AdminEmail:           env("ADMIN_EMAIL", ""),
+		AdminPass:            env("ADMIN_PASSWORD", ""),
+		AutoMigrate:          envBool("AUTO_MIGRATE", true),
+		PublicURL:            env("PUBLIC_URL", "http://localhost:8080"),
+		PaymentWebhookSecret: env("PAYMENT_WEBHOOK_SECRET", ""),
+		WorkerTick:           envDuration("WORKER_TICK", 2*time.Second),
+		MaxUploadMB:          envInt("MAX_UPLOAD_MB", 25),
+		Env:                  env("APP_ENV", "dev"),
+		WebDir:               env("WEB_DIR", "./web"),
+		MobileDir:            env("MOBILE_DIR", "./mobile"),
 	}
 }
 

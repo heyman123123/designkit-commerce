@@ -47,6 +47,7 @@ export function shellHTML() {
 
 function rowHTML(o) {
   const canRefund = o.status === 'paid';
+  const canMarkPaid = o.status === 'pending';
   return `<tr>
     <td>
       <div class="mono">${fmt.shortId(o.id, 10)}</div>
@@ -61,7 +62,9 @@ function rowHTML(o) {
     <td class="muted small">${o.note ? ui.esc(o.note) : '—'}</td>
     <td class="shrink">${canRefund
       ? `<button class="btn sm danger" data-refund="${ui.esc(o.id)}" type="button">退款</button>`
-      : '<span class="muted small">—</span>'}</td>
+      : canMarkPaid
+        ? `<button class="btn sm primary" data-paid="${ui.esc(o.id)}" type="button">标记到账</button>`
+        : '<span class="muted small">—</span>'}</td>
   </tr>`;
 }
 
@@ -219,6 +222,31 @@ export async function loadInto(el, ctx) {
     bindRetry(list, load);
 
     list.querySelector('[data-new]')?.addEventListener('click', () => openOrderForm(load));
+
+    list.querySelectorAll('[data-paid]').forEach((b) => {
+      b.onclick = async () => {
+        const o = state.items.find((x) => x.id === b.dataset.paid);
+        if (!o) return;
+        const ok = await confirmAction({
+          title: '确认收款到账',
+          message: `订单 ${fmt.shortId(o.id, 10)}（${fmt.money(o.amount_cents)}）将标记为已支付，并立即把「${o.plan_code}」套餐配额应用到该租户。`,
+          confirmLabel: '确认到账',
+          html: '<p class="hint mt-8">适用于银行转账、线下收款；线上支付回调会由网关自动完成同样操作。</p>',
+        });
+        if (!ok) return;
+        b.disabled = true;
+        b.textContent = '处理中…';
+        try {
+          await adminApi.post(`/v1/admin/orders/${encodeURIComponent(o.id)}/paid`, {});
+          ui.toast('已确认到账并开通套餐', 'good');
+          await load();
+        } catch (err) {
+          b.disabled = false;
+          b.textContent = '标记到账';
+          ui.toast(err.message || '确认失败', 'bad');
+        }
+      };
+    });
 
     list.querySelectorAll('[data-refund]').forEach((b) => {
       b.onclick = async () => {

@@ -4,6 +4,8 @@ import { api, ui, session } from '../../assets/core.js';
 import { setCrumb } from '../shell.js';
 import { pageHead, loadUsage } from '../common.js';
 
+const PLAN_LABEL = { free: 'Free 免费版', starter: 'Starter 起步版', growth: 'Growth 成长版', pro: 'Pro 专业版' };
+
 const EVENT_LABEL = {
   sku_created: '新建 SKU',
   generation: 'AI 生成',
@@ -65,9 +67,9 @@ export async function render({ root }) {
     </section>
     <div class="card mt-24">
       <div class="row between wrap">
-        <div><b>需要更多额度？</b>
-          <div class="muted small">当前项目处于早期运营阶段，套餐调整由平台运营手工开通。</div></div>
-        <span class="badge accent no-dot">${ui.esc(ui.label((window.__dkWs || {}).plan || 'free'))}</span>
+        <div><b>当前套餐：${ui.esc(PLAN_LABEL[usage.plan] || usage.plan || 'Free 免费版')}</b>
+          <div class="muted small">套餐调整与续费由平台运营开通；升级后配额立即生效，历史流水不受影响。</div></div>
+        <a class="btn sm" href="mailto:support@designkit.cn?subject=${encodeURIComponent('申请升级套餐')}">联系升级</a>
       </div>
     </div>`;
 }
