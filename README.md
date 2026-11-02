@@ -2,7 +2,7 @@
 
 面向跨境电商卖家的商品视觉资产生产系统：上传商品图 → 自动分析 → 生成主图/场景图/卖点图 → 质检与审核 → 按项目、SKU、文件夹和版本管理 → 导出平台规格包。
 
-当前仓库是**后端 MVP**：多租户 SaaS 的完整可运行骨架，含平台管理后台接口。
+当前仓库是**可运行的全栈 MVP**：多租户 Go 后端 + Web 工作台 + 平台运营后台 + 移动端 PWA。三个前端入口都是零构建的 ES Module 应用，由 Go 直接托管，一个进程一套部署。
 
 ## 技术栈
 
@@ -17,6 +17,8 @@
 | 存储 | 本地文件系统（接口已抽象，可换 S3/R2） |
 | 实时 | SSE `/v1/w/{slug}/events` |
 | 图片 | 标准库 `image` + mock provider（可换真实模型） |
+| 前端 | 原生 ES Module + 共享设计系统 CSS（零构建、无 npm） |
+| 托管 | Go 直接托管 `/app/`、`/admin/`、`/m/` 三套静态资源 |
 
 ## 已实现
 
@@ -35,11 +37,20 @@
 cd apps/api
 cp ../../.env.example .env   # 可跳过，默认 sqlite
 
-# 本地：SQLite + 自动迁移 + 进程内 worker
-go run ./cmd/api
+# 本地：SQLite + 自动迁移 + 进程内 worker，并托管前端
+WEB_DIR=../../web MOBILE_DIR=../../mobile go run ./cmd/api
 ```
 
-默认地址 `http://localhost:8080`，健康检查 `GET /healthz`。
+启动后：
+
+| 入口 | 地址 | 说明 |
+| --- | --- | --- |
+| Web 工作台 | http://localhost:8080/app/ | 注册/登录、项目、SKU、上传、生成、审核、导出 |
+| 运营管理后台 | http://localhost:8080/admin/ | 平台管理员登录（独立令牌） |
+| 移动端 PWA | http://localhost:8080/m/ | 拍照上传、进度、审核、分享 |
+| 健康检查 | `GET /healthz` | 区分 db 与队列状态 |
+
+工作台使用说明：注册后自动创建默认项目与「未分类 SKU」文件夹，默认 1 个 SKU 配额与 1 次导出额度，足够跑通一条完整链路。
 
 管理员账号由 `ADMIN_EMAIL` / `ADMIN_PASSWORD` 在首次启动时自动创建（已存在则提升为平台管理员）。
 
@@ -57,6 +68,21 @@ go test -race ./...
 ```
 
 覆盖：跨租户隔离、配额拦截、幂等提交、后台与租户令牌隔离、队列生成到落库。
+
+## 前端入口
+
+三个前端共用 `web/assets/app.css` 设计系统与 `web/assets/core.js`（会话、API、UI 组件、hash 路由）：
+
+```text
+web/app/          Web 工作台（登录、总览、项目、SKU、审核、导出、用量、成员、设置）
+web/admin/        运营后台（租户、订阅、成本、任务、风控、配置、审计）
+mobile/           移动端 PWA（拍摄上传、进度、审核、分享）
+web/assets/       共享设计系统与核心模块
+```
+
+- 没有 node_modules、没有打包步骤；改完文件刷新即可生效。
+- 素材图片通过 `/v1/w/{slug}/assets/{id}/content?access_token=...` 直接给 `<img>` 用，令牌只允许出现在 GET 请求。
+- 生产环境把 `web/` 与 `mobile/` 一起打进镜像，设置 `WEB_DIR=/app/web`、`MOBILE_DIR=/app/mobile`。
 
 ## 端到端示例
 
@@ -143,6 +169,7 @@ apps/api/
   internal/handler/ 路由与业务接口
   internal/service/ provider 抽象、队列执行
   internal/storage/ 对象存储接口与本地实现
+  internal/webui/   前端静态托管与 SPA 回退
   internal/model/   GORM 模型
   internal/platform/ 数据库连接
   db/migrations/    生产 SQL（含 RLS）
@@ -150,12 +177,14 @@ apps/api/
 
 ## 后续计划
 
-1. Web 工作台（Next.js）与 App companion（Expo）
-2. 接入真实视觉分析/图像生成供应商，替换 mock provider
-3. 素材版本链、AI 质检规则、批量审核
-4. S3/R2 直传签名、CDN
-5. River 队列替换轮询 worker，支持定时与唯一任务
-6. 订阅支付（Stripe / 微信 / 支付宝）与试用防滥用
+全功能路线见 [PLAN.md](PLAN.md)，当前优先级：
+
+1. 版本链（同一 SKU 同模板多版本、对比、设为主版本）
+2. QC 明细（分辨率、白底、透明通道、水印风险）与修复建议
+3. 真实视觉分析与图像生成供应商（可配置 OpenAI 兼容接口）
+4. S3/R2 预签名直传与 CDN
+5. 订阅/订单/发票与试用防滥用
+6. 队列退避、死信与并发 worker
 
 ## 说明
 

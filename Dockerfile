@@ -13,9 +13,12 @@ RUN apk add --no-cache ca-certificates tzdata && adduser -D -u 10001 app
 WORKDIR /app
 COPY --from=build /out/api /app/api
 COPY --from=build /out/worker /app/worker
+# 三个前端入口由 Go 直接托管（零构建静态文件）
+COPY web /app/web
 RUN mkdir -p /app/data/storage && chown -R app:app /app
 USER app
-ENV APP_ADDR=:8080 APP_ENV=prod DB_DRIVER=postgres STORAGE_DIR=/app/data/storage
+ENV APP_ADDR=:8080 APP_ENV=prod DB_DRIVER=postgres STORAGE_DIR=/app/data/storage \
+    WEB_DIR=/app/web MOBILE_DIR=/app/mobile
 EXPOSE 8080
 HEALTHCHECK --interval=30s --timeout=3s --start-period=10s \
   CMD wget -qO- http://127.0.0.1:8080/healthz || exit 1

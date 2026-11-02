@@ -116,5 +116,11 @@ func bearer(r *http.Request) string {
 	if strings.HasPrefix(h, "Bearer ") {
 		return strings.TrimSpace(strings.TrimPrefix(h, "Bearer "))
 	}
+	// <img> 与浏览器 EventSource 无法自定义请求头，只读请求允许用查询参数传令牌。
+	if r.Method == http.MethodGet || r.Method == http.MethodHead {
+		if t := strings.TrimSpace(r.URL.Query().Get("access_token")); t != "" {
+			return t
+		}
+	}
 	return ""
 }

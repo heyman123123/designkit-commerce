@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>DesignKit Commerce · 商品视觉工作台</title>
+  <meta name="description" content="上传商品图，自动分析并生成电商主图、场景图与卖点图；按项目、SKU、文件夹与版本管理，质检通过后导出平台规格包。" />
+  <link rel="stylesheet" href="/assets/app.css" />
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%237c6cf6'/%3E%3Ctext x='16' y='21' font-size='14' font-family='sans-serif' font-weight='700' fill='white' text-anchor='middle'%3EDK%3C/text%3E%3C/svg%3E" />
+  <style>
+    .boot { min-height: 100vh; display: grid; place-items: center; color: var(--ink-3); font-size: 13px; }
+    .boot .b-mark { width: 40px; height: 40px; border-radius: 12px; background: linear-gradient(135deg, var(--accent), var(--accent-2)); margin: 0 auto 12px; }
+  </style>
+</head>
+<body>
+  <div id="app">
+    <div class="boot"><div style="text-align:center"><div class="b-mark"></div>正在启动工作台…</div></div>
+  </div>
+  <noscript>这个工作台需要启用 JavaScript。</noscript>
+  <script>
+    // 开发期兜底：脚本报错时直接显示在页面上，而不是留一个白屏。
+    function showBootError(msg, detail) {
+      var el = document.getElementById('app');
+      if (!el) return;
+      el.innerHTML = '<div style="max-width:560px;margin:60px auto;padding:20px;border:1px solid #3a2b2b;border-radius:14px;background:#1b1414;color:#f3d9d9;font:13px/1.6 -apple-system,sans-serif">'
+        + '<div style="font-weight:700;color:#ef6461;margin-bottom:6px">工作台加载失败</div>'
+        + '<div>' + String(msg).replace(/[<>&]/g, '') + '</div>'
+        + (detail ? '<pre style="white-space:pre-wrap;margin-top:10px;opacity:.75;font-size:11px">' + String(detail).replace(/[<>&]/g, '') + '</pre>' : '')
+        + '<div style="margin-top:12px;opacity:.8">请刷新页面；若持续失败，检查 /app/main.js 是否返回 200，或查看浏览器控制台。</div></div>';
+    }
+    window.addEventListener('error', function (e) {
+      if (e && e.message) showBootError(e.message, (e.filename || '') + ':' + (e.lineno || ''));
+    });
+    window.addEventListener('unhandledrejection', function (e) {
+      var r = e && e.reason;
+      showBootError(r && r.message ? r.message : '未处理的异步错误', r && r.stack ? String(r.stack).split('\n').slice(0, 4).join('\n') : '');
+    });
+  </script>
+  <script type="module" src="/app/main.js"></script>
+</body>
+</html>

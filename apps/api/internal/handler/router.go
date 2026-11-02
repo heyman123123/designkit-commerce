@@ -11,6 +11,7 @@ import (
 	httpmw "github.com/heyman123123/designkit-commerce/apps/api/internal/middleware"
 	"github.com/heyman123123/designkit-commerce/apps/api/internal/service"
 	"github.com/heyman123123/designkit-commerce/apps/api/internal/storage"
+	"github.com/heyman123123/designkit-commerce/apps/api/internal/webui"
 	"gorm.io/gorm"
 )
 
@@ -91,6 +92,9 @@ func NewRouter(d Deps) http.Handler {
 			r.Get("/audit", h.AdminAudit)
 		})
 	})
+
+	// 三个前端入口：Web 工作台 /app/、管理后台 /admin/、移动端 /m/。
+	webui.Mount(r, d.Cfg.WebDir, d.Cfg.MobileDir)
 
 	return r
 }

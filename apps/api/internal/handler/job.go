@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"path/filepath"
+	"strings"
 
 	"github.com/google/uuid"
 	"github.com/heyman123123/designkit-commerce/apps/api/internal/httpx"
@@ -280,8 +281,9 @@ func (h *Handler) ExportSKU(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			continue
 		}
-		name := fmt.Sprintf("%s/%s-%s%s", sku.Code, filepath.Base(a.StorageKey),
-			a.ID.String()[:8], filepath.Ext(a.StorageKey))
+		ext := filepath.Ext(a.StorageKey)
+		base := strings.TrimSuffix(filepath.Base(a.StorageKey), ext)
+		name := fmt.Sprintf("%s/%s-%s%s", sku.Code, base, a.ID.String()[:8], ext)
 		entry, err := zw.Create(name)
 		if err == nil {
 			_, _ = io.Copy(entry, f)

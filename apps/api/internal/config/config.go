@@ -22,6 +22,8 @@ type Config struct {
 	WorkerTick  time.Duration
 	MaxUploadMB int64
 	Env         string
+	WebDir      string
+	MobileDir   string
 }
 
 func Load() Config {
@@ -40,6 +42,8 @@ func Load() Config {
 		WorkerTick:  envDuration("WORKER_TICK", 2*time.Second),
 		MaxUploadMB: envInt("MAX_UPLOAD_MB", 25),
 		Env:         env("APP_ENV", "dev"),
+		WebDir:      env("WEB_DIR", "./web"),
+		MobileDir:   env("MOBILE_DIR", "./mobile"),
 	}
 }
 

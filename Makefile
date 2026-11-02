@@ -1,7 +1,7 @@
 .PHONY: dev test build run worker fmt tidy
 
 dev:
-	cd apps/api && DB_DRIVER=sqlite AUTO_MIGRATE=true go run ./cmd/api
+	cd apps/api && DB_DRIVER=sqlite AUTO_MIGRATE=true WEB_DIR=../../web MOBILE_DIR=../../mobile go run ./cmd/api
 
 run: dev
 
