@@ -44,7 +44,7 @@ function infoRow(label, valueHTML) {
   return `<div class="info-row"><div class="ir-label">${label}</div><div class="ir-value">${valueHTML}</div></div>`;
 }
 
-function detailHTML(d) {
+function detailHTML(d, members = []) {
   const ws = d.workspace || {};
   const suspended = ws.status === 'suspended';
   const trial = ws.trial_ends_at ? ui.fmt.date(ws.trial_ends_at) : '未设置';
@@ -97,11 +97,14 @@ function detailHTML(d) {
       ${infoRow('Slug', `<span class="mono">${ui.esc(ws.slug || '—')}</span>`)}
       ${infoRow('Owner', `<span class="small">${ui.esc(ws.owner_id || '—')}</span>`)}
       ${infoRow('成员数', `<b>${fmt.num(d.members)}</b> 人`)}
+      ${infoRow('成员角色', members.length
+        ? members.map((m) => `${ui.esc(m.role || 'viewer')}`).filter((v, i, a) => a.indexOf(v) === i).join(' · ')
+        : '—')}
       ${infoRow('套餐', planBadge(ws.plan))}
       ${infoRow('创建时间', ui.fmt.dt(ws.created_at))}
       ${infoRow('最近更新', ui.fmt.dt(ws.updated_at))}
       ${infoRow('试用到期', trial)}
-      <p class="hint mt-16">成员列表、Owner 邮箱重置等接口尚未接入，详情页暂只展示数量。</p>
+      <p class="hint mt-16">成员清单在下方「租户成员」卡片；Owner 邮箱重置尚未提供接口。</p>
     </div>
 
     <div class="card">
@@ -173,6 +176,23 @@ function detailHTML(d) {
     </div>
     <div class="divider"></div>
     ${ordersHTML()}
+  </div>
+
+  <div class="card mt-16">
+    <div class="card-head">
+      <h2>租户成员</h2>
+      <span class="chip">${fmt.num(members.length)} 人</span>
+    </div>
+    ${members.length ? `<div class="table-wrap"><table class="table dense">
+      <thead><tr><th>成员</th><th>邮箱</th><th>角色</th><th>加入时间</th></tr></thead>
+      <tbody>${members.map((m) => `<tr>
+        <td><div class="cell-title">${ui.esc(m.name || '—')}</div>
+          <div class="mono muted small">${ui.esc(fmt.shortId(m.user_id, 10))}</div></td>
+        <td class="mono small">${ui.esc(m.email || '—')}</td>
+        <td><span class="badge muted no-dot">${ui.esc(m.role || 'viewer')}</span></td>
+        <td class="muted small">${ui.fmt.dt(m.joined_at)}</td>
+      </tr>`).join('')}</tbody>
+    </table></div>` : ui.empty({ icon: '◍', title: '没有成员记录', sub: '注册后会自动成为 owner；若为空说明数据异常。' })}
   </div>
 
   <div class="card danger-zone mt-16">
@@ -254,6 +274,8 @@ export async function page({ params, root }) {
   root.innerHTML = ui.loading('正在加载租户详情…');
   current = null;
 
+  let members = [];
+
   async function loadMeta() {
     const id = encodeURIComponent(params.id);
     await Promise.all([
@@ -265,6 +287,10 @@ export async function page({ params, root }) {
         .get(`/v1/admin/orders?workspace_id=${id}`)
         .then((d) => { orders = d.items || []; })
         .catch(() => { orders = []; }),
+      adminApi
+        .get(`/v1/admin/tenants/${id}/members`)
+        .then((d) => { members = d.items || []; })
+        .catch(() => { members = []; }),
     ]);
   }
 
@@ -294,7 +320,7 @@ export async function page({ params, root }) {
   function render() {
     const d = current;
     const ws = d.workspace || {};
-    root.innerHTML = detailHTML(d);
+    root.innerHTML = detailHTML(d, members);
     setCrumb(
       `<a href="#/tenants">租户</a><span>/</span><b>${ui.esc(ws.name || fmt.shortId(ws.id))}</b>`,
     );

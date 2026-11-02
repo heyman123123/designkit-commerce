@@ -2,6 +2,7 @@ package handler
 
 import (
 	"net/http"
+	"strconv"
 	"strings"
 
 	"github.com/google/uuid"
@@ -223,11 +224,88 @@ func (h *Handler) AdminUsage(w http.ResponseWriter, r *http.Request) {
 	httpx.JSON(w, http.StatusOK, map[string]any{"total_cost_cents": total, "top": rows})
 }
 
+// AdminAudit 审计日志：支持动作、租户、管理员维度筛选与分页。
 func (h *Handler) AdminAudit(w http.ResponseWriter, r *http.Request) {
-	var items []model.AuditLog
-	if err := h.DB.Order("created_at desc").Limit(200).Find(&items).Error; err != nil {
+	q := h.DB.Model(&model.AuditLog{})
+	if action := strings.TrimSpace(r.URL.Query().Get("action")); action != "" {
+		q = q.Where("action = ?", action)
+	}
+	if prefix := strings.TrimSpace(r.URL.Query().Get("prefix")); prefix != "" {
+		q = q.Where("action LIKE ?", prefix+"%")
+	}
+	if ws := strings.TrimSpace(r.URL.Query().Get("workspace_id")); ws != "" {
+		if id, err := uuid.Parse(ws); err == nil {
+			q = q.Where("workspace_id = ?", id)
+		}
+	}
+	if admin := r.URL.Query().Get("is_admin"); admin == "true" || admin == "false" {
+		q = q.Where("is_admin = ?", admin == "true")
+	}
+	var total int64
+	if err := q.Count(&total).Error; err != nil {
 		httpx.Err(w, http.StatusInternalServerError, "query_failed", "查询失败")
 		return
+	}
+	page, size := queryPage(r, 200, 200)
+	var items []model.AuditLog
+	if err := q.Order("created_at desc").Offset((page - 1) * size).Limit(size).Find(&items).Error; err != nil {
+		httpx.Err(w, http.StatusInternalServerError, "query_failed", "查询失败")
+		return
+	}
+	httpx.JSON(w, http.StatusOK, map[string]any{
+		"items": items, "total": total, "page": page, "size": size,
+	})
+}
+
+// queryPage 解析 page/size，size 上限为 maxSize。
+func queryPage(r *http.Request, defaultSize, maxSize int) (int, int) {
+	page := 1
+	size := defaultSize
+	if v, err := strconv.Atoi(r.URL.Query().Get("page")); err == nil && v > 0 {
+		page = v
+	}
+	if v, err := strconv.Atoi(r.URL.Query().Get("size")); err == nil && v > 0 {
+		size = v
+	}
+	if maxSize > 0 && size > maxSize {
+		size = maxSize
+	}
+	return page, size
+}
+
+// AdminTenantMembers 返回租户成员与其账号信息，供运营排查与联系 owner。
+func (h *Handler) AdminTenantMembers(w http.ResponseWriter, r *http.Request) {
+	ws, ok := h.tenantByPath(w, r)
+	if !ok {
+		return
+	}
+	var members []model.Member
+	if err := h.DB.Where("workspace_id = ?", ws.ID).Order("created_at asc").Find(&members).Error; err != nil {
+		httpx.Err(w, http.StatusInternalServerError, "query_failed", "查询失败")
+		return
+	}
+	userIDs := make([]uuid.UUID, 0, len(members))
+	for _, m := range members {
+		userIDs = append(userIDs, m.UserID)
+	}
+	users := map[uuid.UUID]model.User{}
+	if len(userIDs) > 0 {
+		var rows []model.User
+		if err := h.DB.Where("id IN ?", userIDs).Find(&rows).Error; err != nil {
+			httpx.Err(w, http.StatusInternalServerError, "query_failed", "查询失败")
+			return
+		}
+		for _, u := range rows {
+			users[u.ID] = u
+		}
+	}
+	items := make([]map[string]any, 0, len(members))
+	for _, m := range members {
+		u := users[m.UserID]
+		items = append(items, map[string]any{
+			"user_id": m.UserID, "email": u.Email, "name": u.Name,
+			"role": m.Role, "joined_at": m.CreatedAt,
+		})
 	}
 	httpx.JSON(w, http.StatusOK, map[string]any{"items": items})
 }

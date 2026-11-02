@@ -5,7 +5,7 @@
 import { ui, $, $$, debounce } from '../../assets/core.js';
 import { adminApi, errorHTML, bindRetry, fmt } from '../admin-core.js';
 
-const state = { items: [], action: '', keyword: '' };
+const state = { items: [], action: '', keyword: '', page: 1, total: 0, size: 50 };
 
 const ACTION_LABEL = {
   'admin.tenant.update': '调整租户',
@@ -21,7 +21,7 @@ function shellHTML() {
   return `<div class="page-head">
     <div class="ph-main">
       <h1>审计日志</h1>
-      <p class="page-sub">最近 200 条操作，按时间倒序；后台操作标记来源为「管理员」。</p>
+      <p class="page-sub">按时间倒序；支持按动作筛选与分页加载，后台操作标记来源为「管理员」。</p>
     </div>
     <div class="ph-actions"><button class="btn sm" id="a-refresh" type="button">刷新</button></div>
   </div>
@@ -40,7 +40,7 @@ function shellHTML() {
 
   <div id="a-list">${ui.loading('正在加载审计日志…')}</div>
 
-  <p class="hint mt-16">审计日志当前为只读接口，不支持服务端分页与导出。</p>`;
+  <p class="hint mt-16">审计日志只读；动作筛选与分页由服务端完成，关键词在当前已加载记录内过滤。</p>`;
 }
 
 function rowHTML(it) {
@@ -87,12 +87,17 @@ function listHTML(items) {
         : '<button class="btn sm mt-8" data-reload>刷新</button>',
     });
   }
+  const more = state.items.length < state.total
+    ? `<div class="row mt-12" style="justify-content:center">
+        <button class="btn sm" data-more type="button">加载更多（${fmt.num(state.items.length)} / ${fmt.num(state.total)}）</button>
+      </div>`
+    : '';
   return `<div class="table-wrap"><table class="table dense">
     <thead><tr>
       <th>时间</th><th>动作</th><th>对象</th><th>来源</th><th>操作者</th><th class="shrink"></th>
     </tr></thead>
     <tbody>${items.map(rowHTML).join('')}</tbody>
-  </table></div>`;
+  </table></div>${more}`;
 }
 
 export async function page({ root }) {
@@ -112,41 +117,50 @@ export async function page({ root }) {
   }, 200);
   actionSel.onchange = () => {
     state.action = actionSel.value;
-    render();
+    load({ reset: true });
   };
 
-  async function load() {
-    list.innerHTML = ui.loading('正在加载审计日志…');
-    countEl.textContent = '—';
+  async function load({ reset = true } = {}) {
+    if (reset) {
+      state.page = 1;
+      list.innerHTML = ui.loading('正在加载审计日志…');
+      countEl.textContent = '—';
+    }
     try {
-      const data = await adminApi.get('/v1/admin/audit');
-      state.items = data.items || [];
-      fillActions();
+      const qs = new URLSearchParams({ page: String(state.page), size: String(state.size) });
+      if (state.action) qs.set('action', state.action);
+      const data = await adminApi.get(`/v1/admin/audit?${qs.toString()}`);
+      const items = data.items || [];
+      state.total = Number(data.total) || items.length;
+      state.items = reset ? items : state.items.concat(items);
+      if (reset) fillActions();
       render();
     } catch (err) {
       list.innerHTML = errorHTML(err);
-      bindRetry(list, load);
+      bindRetry(list, () => load({ reset: true }));
     }
   }
 
+  // fillActions 用已加载记录里的动作做候选，另外补上已知动作，避免筛选后选项消失。
   function fillActions() {
     const counts = new Map();
     state.items.forEach((it) => counts.set(it.action, (counts.get(it.action) || 0) + 1));
+    Object.keys(ACTION_LABEL).forEach((a) => { if (!counts.has(a)) counts.set(a, 0); });
     const current = state.action;
     actionSel.innerHTML =
       '<option value="">全部动作</option>' +
       Array.from(counts.entries())
         .sort((a, b) => b[1] - a[1])
-        .map(([a, n]) => `<option value="${ui.esc(a)}">${ui.esc(actionLabel(a))}（${n}）</option>`)
+        .map(([a, n]) => `<option value="${ui.esc(a)}">${ui.esc(actionLabel(a))}${n ? `（${n}）` : ''}</option>`)
         .join('');
-    actionSel.value = counts.has(current) ? current : '';
+    actionSel.value = counts.has(current) || current === '' ? current : '';
     state.action = actionSel.value;
   }
 
   function render() {
     const items = filtered();
     list.innerHTML = listHTML(items);
-    countEl.textContent = `共 ${fmt.num(items.length)} / ${fmt.num(state.items.length)} 条`;
+    countEl.textContent = `已加载 ${fmt.num(state.items.length)} / 共 ${fmt.num(state.total)} 条`;
 
     list.querySelector('[data-clear]')?.addEventListener('click', () => {
       state.keyword = '';
@@ -155,7 +169,12 @@ export async function page({ root }) {
       actionSel.value = '';
       render();
     });
-    list.querySelector('[data-reload]')?.addEventListener('click', () => load());
+    list.querySelector('[data-reload]')?.addEventListener('click', () => load({ reset: true }));
+    list.querySelector('[data-more]')?.addEventListener('click', (e) => {
+      e.currentTarget.disabled = true;
+      state.page += 1;
+      load({ reset: false });
+    });
 
     $$('[data-meta]', list).forEach((btn) => {
       btn.onclick = () => {

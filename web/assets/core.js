@@ -436,16 +436,22 @@ export const ui = {
 
   confirm({ title = '确认操作', message = '', confirmLabel = '确认', cancelLabel = '取消', danger = false } = {}) {
     return new Promise((resolve) => {
-      const m = ui.modal({
+      // close() 会触发 onClose，所以先落结果再关，避免确认按钮被 onClose 抢先 resolve(false)。
+      let settled = false;
+      const finish = (value) => {
+        if (settled) return;
+        settled = true;
+        resolve(value);
+      };
+      ui.modal({
         title,
         body: `<p class="muted">${ui.esc(message)}</p>`,
         footer: [
-          { label: cancelLabel, kind: 'ghost', onClick: (close) => { close(); resolve(false); } },
-          { label: confirmLabel, kind: danger ? 'danger' : 'primary', onClick: (close) => { close(); resolve(true); } },
+          { label: cancelLabel, kind: 'ghost', onClick: (close) => { finish(false); close(); } },
+          { label: confirmLabel, kind: danger ? 'danger' : 'primary', onClick: (close) => { finish(true); close(); } },
         ],
-        onClose: () => resolve(false),
+        onClose: () => finish(false),
       });
-      m.el.querySelector('.modal-body');
     });
   },
 };

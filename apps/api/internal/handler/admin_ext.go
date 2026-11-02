@@ -85,6 +85,14 @@ func (h *Handler) AdminUpsertPlan(w http.ResponseWriter, r *http.Request) {
 		badRequest(w, "请求体格式不正确")
 		return
 	}
+	// PATCH /plans/{code} 以 URL 为准；POST /plans 用请求体。
+	if pathCode := strings.TrimSpace(chi.URLParam(r, "code")); pathCode != "" {
+		if req.Code != "" && req.Code != pathCode {
+			badRequest(w, "URL 与请求体中的套餐编码不一致")
+			return
+		}
+		req.Code = pathCode
+	}
 	req.Code = strings.TrimSpace(req.Code)
 	if req.Code == "" {
 		badRequest(w, "请填写套餐编码")

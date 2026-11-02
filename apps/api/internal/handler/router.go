@@ -92,6 +92,7 @@ func NewRouter(d Deps) http.Handler {
 			r.Use(mw.RequireAdmin)
 			r.Get("/tenants", h.AdminListTenants)
 			r.Get("/tenants/{tenantID}", h.AdminGetTenant)
+			r.Get("/tenants/{tenantID}/members", h.AdminTenantMembers)
 			r.Patch("/tenants/{tenantID}", h.AdminPatchTenant)
 			r.Post("/tenants/{tenantID}/suspend", h.AdminSuspendTenant)
 			r.Get("/jobs/failed", h.AdminFailedJobs)
