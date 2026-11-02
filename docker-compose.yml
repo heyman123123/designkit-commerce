@@ -1,0 +1,40 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: designkit
+      POSTGRES_PASSWORD: designkit
+      POSTGRES_DB: designkit
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U designkit"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  api:
+    build: .
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      APP_ADDR: ":8080"
+      APP_ENV: prod
+      DB_DRIVER: postgres
+      DB_DSN: "host=postgres user=designkit password=designkit dbname=designkit port=5432 sslmode=disable TimeZone=UTC"
+      JWT_SECRET: "change-me-in-production"
+      ADMIN_EMAIL: "admin@example.com"
+      ADMIN_PASSWORD: "adminpass12345"
+      RUN_WORKER: "true"
+      STORAGE_DIR: "/app/data/storage"
+    ports:
+      - "8080:8080"
+    volumes:
+      - apidata:/app/data
+
+volumes:
+  pgdata:
+  apidata:

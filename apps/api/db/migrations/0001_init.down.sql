@@ -1,0 +1,12 @@
+-- 回滚：按依赖倒序删除
+DROP TABLE IF EXISTS refresh_tokens;
+DROP TABLE IF EXISTS audit_logs;
+DROP TABLE IF EXISTS usage_ledgers;
+DROP TABLE IF EXISTS generation_jobs;
+DROP TABLE IF EXISTS assets;
+DROP TABLE IF EXISTS skus;
+DROP TABLE IF EXISTS folders;
+DROP TABLE IF EXISTS projects;
+DROP TABLE IF EXISTS members;
+DROP TABLE IF EXISTS workspaces;
+DROP TABLE IF EXISTS users;
