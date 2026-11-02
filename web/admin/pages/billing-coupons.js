@@ -113,7 +113,7 @@ function couponForm(c) {
     <label class="check-line"><input type="checkbox" id="cf-active" ${editing ? (c.active ? 'checked' : '') : 'checked'} /> 启用该优惠码</label>`;
 }
 
-async function openForm(c) {
+async function openForm(c, reload) {
   const m = ui.modal({
     title: c ? `编辑优惠码 ${c.code}` : '新建优惠码',
     body: couponForm(c),
@@ -154,7 +154,7 @@ async function openForm(c) {
             else await adminApi.post('/v1/admin/coupons', payload);
             close();
             ui.toast(c ? '优惠码已更新' : '优惠码已创建', 'good');
-            await load();
+            await reload();
           } catch (err) {
             btn.disabled = false;
             btn.textContent = '保存';
@@ -170,7 +170,7 @@ export async function loadInto(el) {
   el.innerHTML = shellHTML();
   const list = $('#cp-list', el);
 
-  $('#cp-new', el).onclick = () => openForm(null);
+  $('#cp-new', el).onclick = () => openForm(null, load);
   const search = $('#cp-search', el);
   search.oninput = debounce(() => {
     state.keyword = search.value.trim().toLowerCase();
@@ -216,7 +216,7 @@ export async function loadInto(el) {
     list.querySelectorAll('[data-edit]').forEach((b) => {
       b.onclick = () => {
         const c = state.items.find((x) => x.code === b.dataset.edit);
-        if (c) openForm(c);
+        if (c) openForm(c, load);
       };
     });
 
@@ -246,4 +246,5 @@ export async function loadInto(el) {
   }
 
   await load();
+  return load;
 }

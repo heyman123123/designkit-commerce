@@ -224,7 +224,9 @@ export async function render({ params, query, root }) {
     body.innerHTML = Object.keys(groups).sort().map((t) => `
       <section class="card mb-16">
         <div class="card-head"><h2>${ui.esc(TPL[t] || t)}</h2>
-          <span class="chip">${groups[t].length} 个版本</span></div>
+          <span class="chip">${groups[t].length} 个版本</span>
+          <span class="grow"></span>
+          <button class="btn sm" data-compare="${t}">版本对比</button></div>
         <div class="thumb-grid">
           ${groups[t].map((v) => `<div class="thumb" style="aspect-ratio:1">
             ${v.asset_id ? `<img src="${api.assetURL(v.asset_id)}" loading="lazy" alt="">` : '<div class="empty" style="border:none">无输出</div>'}
@@ -248,6 +250,104 @@ export async function render({ params, query, root }) {
         </table></div>
         ${vIssues(groups[t])}
       </section>`).join('');
+
+    body.querySelectorAll('[data-compare]').forEach((b) => {
+      b.onclick = () => openCompare(b.dataset.compare);
+    });
+
+    // openCompare 并排比较同一模板下的两个版本。
+    function openCompare(template) {
+      const list = groups[template].slice().sort((a, b) => a.version_no - b.version_no);
+      if (list.length < 2) {
+        ui.toast('该模板只有一个版本，暂无可对比对象', 'warn');
+        return;
+      }
+      const opt = (v, selected) => `<option value="${v.job_id}" ${selected ? 'selected' : ''}>v${v.version_no}${v.is_current ? ' · 当前' : ''} · ${v.review_status}</option>`;
+      const leftDefault = list[0];
+      const rightDefault = list[list.length - 1];
+      const panel = document.createElement('div');
+      panel.innerHTML = `
+        <div class="grid two" style="gap:12px">
+          <div class="field"><label for="cmp-left">左侧版本</label>
+            <select class="select" id="cmp-left">${list.map((v) => opt(v, v.job_id === leftDefault.job_id)).join('')}</select></div>
+          <div class="field"><label for="cmp-right">右侧版本</label>
+            <select class="select" id="cmp-right">${list.map((v) => opt(v, v.job_id === rightDefault.job_id)).join('')}</select></div>
+        </div>
+        <div id="cmp-body">${ui.loading('正在读取版本…')}</div>`;
+
+      const load = async () => {
+        const left = panel.querySelector('#cmp-left').value;
+        const right = panel.querySelector('#cmp-right').value;
+        const host = panel.querySelector('#cmp-body');
+        if (left === right) {
+          host.innerHTML = '<p class="muted small">左右选择的是同一个版本，请换成两个不同版本。</p>';
+          return;
+        }
+        host.innerHTML = ui.loading('正在读取版本…');
+        let data;
+        try {
+          data = await api.get(api.w(`/skus/${sku.id}/compare?left=${encodeURIComponent(left)}&right=${encodeURIComponent(right)}`));
+        } catch (err) {
+          host.innerHTML = ui.empty({ icon: '⚠', title: '对比失败', sub: err.message });
+          return;
+        }
+        const currentIds = new Set((data.marks || []).filter((m) => m.is_current).map((m) => m.job_id));
+        host.innerHTML = `<div class="grid two" style="gap:12px">
+          ${sideHTML(data.left, '左', currentIds)}
+          ${sideHTML(data.right, '右', currentIds)}
+        </div>${diffHTML(data)}`;
+      };
+
+      const sideHTML = (side, tag, currentIds) => {
+        const job = side.job || {};
+        const a = side.asset;
+        const isCurrent = currentIds.has(job.id);
+        const meta = list.find((v) => v.job_id === job.id);
+        const label = meta ? `v${meta.version_no}` : job.id.slice(0, 6);
+        const qc = a && a.qc_score != null ? a.qc_score : '—';
+        const size = a && a.width && a.height ? `${a.width}×${a.height}` : '—';
+        return `<div class="card pad-sm">
+          <div class="row between"><b>${tag} · ${label}</b>${isCurrent ? ui.badge('good', '当前') : ''}</div>
+          <div class="thumb mt-8" style="aspect-ratio:1;background:#000">
+            ${a ? `<img src="${api.assetURL(a.id)}" style="object-fit:contain" loading="lazy" alt="">` : '<div class="empty" style="border:none">无输出</div>'}
+          </div>
+          <div class="col small mt-8">
+            <div class="row between"><span class="muted">审核</span>${ui.badge(job.review_status || 'pending')}</div>
+            <div class="row between"><span class="muted">质检分</span><span class="num">${qc}</span></div>
+            <div class="row between"><span class="muted">尺寸</span><span class="mono">${size}</span></div>
+            <div class="row between"><span class="muted">成本</span><span class="num">${ui.fmt.cents(job.cost_cents)}</span></div>
+            <div class="row between"><span class="muted">时间</span><span>${ui.esc(ui.fmt.dt(job.created_at))}</span></div>
+          </div>
+        </div>`;
+      };
+
+      const diffHTML = (data) => {
+        const a = data.left || {};
+        const b = data.right || {};
+        const qa = a.asset && a.asset.qc_score != null ? a.asset.qc_score : null;
+        const qb = b.asset && b.asset.qc_score != null ? b.asset.qc_score : null;
+        const items = [];
+        if (qa != null && qb != null && qa !== qb) {
+          items.push(`质检分 ${qa} → ${qb}（${qb > qa ? '提升' : '下降'} ${Math.abs(qb - qa)} 分）`);
+        }
+        if (a.job && b.job) {
+          if (a.job.review_status !== b.job.review_status) items.push(`审核结论 ${a.job.review_status} → ${b.job.review_status}`);
+          if ((a.job.cost_cents || 0) !== (b.job.cost_cents || 0)) items.push(`单次成本 ${ui.fmt.cents(a.job.cost_cents)} → ${ui.fmt.cents(b.job.cost_cents)}`);
+        }
+        return `<div class="callout info mt-12"><b>差异摘要</b>
+          <p class="muted small mt-8">${items.length ? ui.esc(items.join('；')) : '两个版本的关键指标一致，可重点看图面差异。'}</p></div>`;
+      };
+
+      ui.modal({
+        title: `版本对比 · ${TPL[template] || template}`,
+        body: panel,
+        wide: true,
+        footer: [{ label: '关闭', kind: 'ghost', onClick: (close) => close() }],
+      });
+      panel.querySelector('#cmp-left').onchange = load;
+      panel.querySelector('#cmp-right').onchange = load;
+      load();
+    }
 
     body.querySelectorAll('[data-promote]').forEach((b) => {
       b.onclick = async () => {

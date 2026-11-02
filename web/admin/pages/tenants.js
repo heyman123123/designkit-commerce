@@ -34,6 +34,8 @@ function shellHTML() {
     </div>
   </div>
 
+  <div class="grid four mb-16" id="t-overview"></div>
+
   <div class="toolbar">
     <div class="tb-search">
       <span class="tb-icon">⌕</span>
@@ -154,5 +156,36 @@ export async function page({ root }) {
     });
   }
 
-  await load();
+  await Promise.all([load(), loadOverview()]);
+
+  async function loadOverview() {
+    const box = $('#t-overview');
+    try {
+      const ov = await adminApi.get('/v1/admin/overview');
+      const t = ov.tenants || {};
+      const j = ov.jobs || {};
+      box.innerHTML = `<div class="kpi">
+          <div class="k-label">租户总数</div>
+          <div class="k-value">${fmt.num(t.total)}</div>
+          <div class="k-note">正常 ${fmt.num(t.active)} · 只读 ${fmt.num(t.readonly)}</div>
+        </div>
+        <div class="kpi">
+          <div class="k-label">已暂停租户</div>
+          <div class="k-value">${fmt.num(t.suspended)}</div>
+          <div class="k-note"><a href="#/risk">前往风控页查看</a></div>
+        </div>
+        <div class="kpi">
+          <div class="k-label">失败任务</div>
+          <div class="k-value">${fmt.num(j.failed)}</div>
+          <div class="k-note">排队 ${fmt.num(j.queued)} · 进行中 ${fmt.num(j.running)}</div>
+        </div>
+        <div class="kpi">
+          <div class="k-label">待处理</div>
+          <div class="k-value">${fmt.num(ov.pending_orders)} / ${fmt.num(ov.open_risks)}</div>
+          <div class="k-note">待支付订单 / 未结风控</div>
+        </div>`;
+    } catch {
+      box.classList.add('hidden');
+    }
+  }
 }

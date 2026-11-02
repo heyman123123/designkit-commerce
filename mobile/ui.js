@@ -4,7 +4,7 @@
  * 这里补移动端专用的底部导航、底部弹层、生命周期清理和状态文案。
  */
 
-import { ui as C, router } from '../web/assets/core.js';
+import { ui as C } from '../web/assets/core.js';
 
 export const esc = C.esc;
 export const toast = C.toast;
@@ -304,9 +304,4 @@ export function copyText(text) {
       ta.remove();
     }
   });
-}
-
-export function goBack(fallback = '/jobs') {
-  if (history.length > 1) history.back();
-  else router.go(fallback);
 }

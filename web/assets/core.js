@@ -153,10 +153,15 @@ async function request(path, { method = 'GET', body, headers, retry = true } = {
   return parse(res);
 }
 
-async function download(path) {
-  let res = await fetch(path, { headers: jsonHeaders() });
+async function download(path, opts = {}) {
+  const init = { method: opts.method || 'GET', headers: jsonHeaders() };
+  if (opts.body != null) {
+    init.body = JSON.stringify(opts.body);
+    init.headers['Content-Type'] = 'application/json';
+  }
+  let res = await fetch(path, init);
   if (res.status === 401 && session.refresh) {
-    if (await doRefresh()) res = await fetch(path, { headers: jsonHeaders() });
+    if (await doRefresh()) res = await fetch(path, init);
   }
   if (!res.ok) {
     try {

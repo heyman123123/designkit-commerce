@@ -272,6 +272,54 @@ export function openUpload({ sku, onDone }) {
 
   const m = ui.modal({ title: `上传素材 · ${sku.code}`, body, wide: true });
 
+  // extOf 取扩展名，直传时用它决定对象名与 Content-Type。
+  function extOf(file) {
+    const name = (file.name || '').toLowerCase();
+    if (name.endsWith('.png')) return '.png';
+    if (name.endsWith('.webp')) return '.webp';
+    if (name.endsWith('.jpg') || name.endsWith('.jpeg')) return '.jpg';
+    return file.type === 'image/webp' ? '.webp' : file.type === 'image/jpeg' ? '.jpg' : '.png';
+  }
+
+  // putFile 用 XHR PUT 到预签名地址，带上传进度。
+  function putFile(url, file, headers, onProgress) {
+    return new Promise((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      xhr.open('PUT', url);
+      Object.entries(headers || {}).forEach(([k, v]) => xhr.setRequestHeader(k, v));
+      if (onProgress) {
+        xhr.upload.onprogress = (e) => {
+          if (e.lengthComputable) onProgress(Math.round((e.loaded / e.total) * 100));
+        };
+      }
+      xhr.onload = () => {
+        if (xhr.status >= 200 && xhr.status < 300) resolve();
+        else reject(new Error(`直传失败（${xhr.status}），已改用服务端上传`));
+      };
+      xhr.onerror = () => reject(new Error('直传网络错误，已改用服务端上传'));
+      xhr.send(file);
+    });
+  }
+
+  // uploadFile 优先走 S3 预签名直传；未开启或直传失败时退回服务端上传。
+  async function uploadFile(file, { onProgress } = {}) {
+    let pre = null;
+    try {
+      pre = await api.get(api.w(`/skus/${sku.id}/presign?ext=${encodeURIComponent(extOf(file))}`));
+    } catch {
+      pre = null;
+    }
+    if (pre && pre.direct && pre.upload_url && pre.key) {
+      try {
+        await putFile(pre.upload_url, file, pre.headers, onProgress);
+        return await api.post(api.w(`/skus/${sku.id}/assets/complete`), { key: pre.key });
+      } catch (err) {
+        ui.toast(err.message || '直传失败，改用服务端上传', 'warn');
+      }
+    }
+    return api.upload(api.w(`/skus/${sku.id}/assets`), file, { onProgress });
+  }
+
   async function handleFiles(files) {
     const images = files.filter((f) => /^image\//.test(f.type));
     if (!images.length) return ui.toast('请选择图片文件', 'bad');
@@ -293,7 +341,7 @@ export function openUpload({ sku, onDone }) {
         const file = await compressImage(original);
         if (file.size > 25 * 1024 * 1024) throw new Error('文件超过 25MB');
         note.textContent = '上传中…';
-        await api.upload(api.w(`/skus/${sku.id}/assets`), file, {
+        await uploadFile(file, {
           onProgress: (p) => {
             bar.style.width = p + '%';
             note.textContent = `上传中 ${p}%`;

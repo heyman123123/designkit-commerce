@@ -27,6 +27,7 @@ export async function render({ params, root }) {
 
   let activeFolder = '';
   let keyword = '';
+  const picked = new Set();
 
   const childrenOf = (id) => folders.filter((f) => (f.parent_id || '') === id);
   const topFolders = childrenOf('');
@@ -36,6 +37,7 @@ export async function render({ params, root }) {
       title: project.name,
       sub: `${project.platform} · ${project.category || '未设品类'} · ${skus.length} 个 SKU`,
       actions: `
+        <button class="btn" id="batch-export" disabled>批量导出</button>
         <button class="btn" id="new-folder">+ 文件夹</button>
         <button class="btn primary" id="new-sku">+ 新建 SKU</button>`,
     })}
@@ -46,9 +48,11 @@ export async function render({ params, root }) {
         <div class="tree" id="folder-tree"></div>
       </aside>
       <section>
-        <div class="row mb-16">
+        <div class="row mb-8">
           <input class="input" id="sku-search" placeholder="搜索 SKU 编码或标题" style="max-width:320px">
           <span class="muted small" id="sku-count"></span>
+          <span class="grow"></span>
+          <span class="muted small" id="pick-info"></span>
         </div>
         <div id="sku-list"></div>
       </section>
@@ -124,8 +128,9 @@ export async function render({ params, root }) {
     }
 
     listEl.innerHTML = `<div class="table-wrap"><table class="table">
-      <thead><tr><th>SKU 编码</th><th>标题</th><th>文件夹</th><th>创建时间</th><th class="shrink"></th></tr></thead>
+      <thead><tr><th class="shrink"><input type="checkbox" id="pick-all" aria-label="全选当前列表"></th><th>SKU 编码</th><th>标题</th><th>文件夹</th><th>创建时间</th><th class="shrink"></th></tr></thead>
       <tbody>${rows.map((s) => `<tr>
+        <td class="shrink"><input type="checkbox" data-pick="${s.id}" ${picked.has(s.id) ? 'checked' : ''} aria-label="选择 ${ui.esc(s.code)}"></td>
         <td><a class="mono" href="#/skus/${s.id}">${ui.esc(s.code)}</a></td>
         <td class="truncate" style="max-width:320px">${ui.esc(s.title || '—')}</td>
         <td><span class="chip">${ui.esc(folderName(s.folder_id))}</span></td>
@@ -151,6 +156,25 @@ export async function render({ params, root }) {
     onDone: () => render({ params, root }),
   });
   document.getElementById('new-sku').onclick = openSKU;
+  document.getElementById('batch-export').onclick = async (e) => {
+    const btn = e.currentTarget;
+    if (!picked.size) return;
+    btn.disabled = true;
+    btn.textContent = '正在打包…';
+    try {
+      await api.download(api.w('/exports/batch'), {
+        method: 'POST',
+        body: { sku_ids: [...picked] },
+      });
+      ui.toast(`已导出 ${picked.size} 个 SKU 的当前版本`, 'good');
+      picked.clear();
+      render({ params, root });
+    } catch (err) {
+      ui.toast(err.message, 'bad');
+      btn.disabled = false;
+      syncPick();
+    }
+  };
   document.getElementById('sku-search').oninput = (e) => {
     keyword = e.target.value.trim();
     renderList();

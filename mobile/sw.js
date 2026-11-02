@@ -4,7 +4,7 @@
  * 导航请求 network-first（离线回 index.html），静态资源 stale-while-revalidate。
  */
 
-const CACHE = 'dk-mobile-v1';
+const CACHE = 'dk-mobile-v2';
 
 const PRECACHE = [
   './',
@@ -14,6 +14,7 @@ const PRECACHE = [
   './api.js',
   './ui.js',
   './media.js',
+  './events.js',
   './screens-login.js',
   './screens-skus.js',
   './screens-capture.js',

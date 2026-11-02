@@ -18,10 +18,6 @@ const UPLOAD_TIMEOUT_MS = 120000;
 
 let refreshing = null;
 
-export function isOffline() {
-  return typeof navigator !== 'undefined' && navigator.onLine === false;
-}
-
 export function forceLogout(message = '登录已过期，请重新登录') {
   session.clear();
   try {

@@ -1,11 +1,11 @@
 /* 任务列表：生成进度 + 待审队列
  *
- * 进度用 2 秒轮询兜底（后端 SSE 只认 Authorization 头，浏览器 EventSource 不能带；
- * 见 api.js 与交付说明，等后端支持 ?access_token 后换成 SSE）。
+ * 进度优先走 SSE（events.js），连接不可用时退回 2 秒轮询。
  */
 
 import { router } from '../web/assets/core.js';
 import { get, wsPath } from './api.js';
+import { connectJobEvents } from './events.js';
 import {
   esc, empty, loading, fmt, setCleanup, friendlyError, jobStatus, isActive, templateName,
 } from './ui.js';
@@ -18,11 +18,16 @@ const FILTERS = [
 ];
 
 let timer = null;
+let stopStream = null;
 
 function stopPolling() {
   if (timer) {
     clearInterval(timer);
     timer = null;
+  }
+  if (stopStream) {
+    stopStream();
+    stopStream = null;
   }
 }
 
@@ -52,7 +57,7 @@ export default async function renderJobs({ root, query }) {
       (f) => `<button type="button" class="chip ${f.key === 'all' ? 'active' : ''}" role="tab"
         aria-selected="${f.key === 'all'}" data-filter="${f.key}">${f.label}<span class="chip-count" data-count="${f.key}"></span></button>`,
     ).join('')}</div>
-    <div class="poll-hint" data-poll-hint hidden>每 2 秒自动刷新进度</div>
+    <div class="poll-hint" data-poll-hint hidden>实时更新进度</div>
     <div class="jobs-list" data-jobs>${loading('正在加载任务…')}</div>
   </div>`;
 
@@ -177,7 +182,32 @@ export default async function renderJobs({ root, query }) {
 
   if (jobs.some(isActive)) {
     hintEl.hidden = false;
-    timer = setInterval(tick, POLL_MS);
+    // 推送为主：事件到达即局部更新；浏览器不支持 EventSource 时才轮询。
+    const merge = (job) => {
+      const idx = jobs.findIndex((j) => j.id === job.id);
+      if (idx >= 0) jobs[idx] = { ...jobs[idx], ...job };
+      else jobs.unshift(job);
+      renderCounts();
+      renderList();
+      if (!jobs.some(isActive)) {
+        hintEl.hidden = true;
+        stopPolling();
+      }
+    };
+    stopStream = connectJobEvents(merge, {
+      onState: (state) => {
+        if (state === 'live') {
+          hintEl.hidden = false;
+          hintEl.textContent = '实时更新进度';
+        } else {
+          hintEl.textContent = '连接中断，正在重连…';
+        }
+      },
+    });
+    if (!stopStream) {
+      hintEl.textContent = `每 ${POLL_MS / 1000} 秒自动刷新进度`;
+      timer = setInterval(tick, POLL_MS);
+    }
   }
 
   const onVisible = () => {

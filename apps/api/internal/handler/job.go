@@ -168,28 +168,7 @@ func (h *Handler) ReviewJob(w http.ResponseWriter, r *http.Request) {
 	}
 
 	err := h.DB.Transaction(func(tx *gorm.DB) error {
-		if err := tx.Model(&model.GenerationJob{}).Where("id = ?", job.ID).
-			Updates(map[string]any{"review_status": req.Status, "review_reason": req.Reason}).Error; err != nil {
-			return err
-		}
-		if job.OutputAssetID != nil {
-			assetStatus := "qc_passed"
-			if req.Status == "rejected" {
-				assetStatus = "qc_rejected"
-			}
-			if req.Status == "manual" {
-				assetStatus = "analyzed"
-			}
-			if err := tx.Model(&model.Asset{}).Where("id = ?", *job.OutputAssetID).
-				Update("status", assetStatus).Error; err != nil {
-				return err
-			}
-		}
-		// 审核通过即把该结果设为对应模板的当前主版本，导出只取主版本。
-		if req.Status == "approved" {
-			return promoteVersion(tx, wsID(r), job.SKUID, job.Template, job.ID)
-		}
-		return nil
+		return applyReview(tx, wsID(r), &job, req.Status, req.Reason)
 	})
 	if err != nil {
 		httpx.Err(w, http.StatusInternalServerError, "update_failed", "审核失败")
@@ -249,39 +228,17 @@ func (h *Handler) ExportSKU(w http.ResponseWriter, r *http.Request) {
 		httpx.Err(w, http.StatusPaymentRequired, "quota_exceeded", "高清导出额度已用完")
 		return
 	}
-	// 只导出每个模板的当前主版本；没有版本标记时退回全部已通过结果。
-	var marks []model.VersionMark
-	h.DB.Where("workspace_id = ? AND sku_id = ? AND is_current = ?", wsID(r), sku.ID, true).Find(&marks)
-	templateByAsset := map[uuid.UUID]string{}
-	q := h.DB.Where("workspace_id = ? AND sku_id = ? AND kind = ? AND status = ?",
-		wsID(r), sku.ID, "output", "qc_passed")
-	if len(marks) > 0 {
-		jobIDs := make([]uuid.UUID, 0, len(marks))
-		for _, m := range marks {
-			jobIDs = append(jobIDs, m.JobID)
-		}
-		var curJobs []model.GenerationJob
-		h.DB.Where("workspace_id = ? AND id IN ?", wsID(r), jobIDs).Find(&curJobs)
-		assetIDs := make([]uuid.UUID, 0, len(curJobs))
-		for _, j := range curJobs {
-			if j.OutputAssetID != nil {
-				assetIDs = append(assetIDs, *j.OutputAssetID)
-				templateByAsset[*j.OutputAssetID] = j.Template
-			}
-		}
-		if len(assetIDs) == 0 {
-			httpx.Err(w, http.StatusConflict, "nothing_to_export", "当前主版本没有可导出的结果")
-			return
-		}
-		q = q.Where("id IN ?", assetIDs)
-	}
-	var assets []model.Asset
-	if err := q.Order("created_at asc").Find(&assets).Error; err != nil {
+	assets, templateByAsset, hasMarks, err := currentVersionAssets(h.DB, wsID(r), sku)
+	if err != nil {
 		httpx.Err(w, http.StatusInternalServerError, "query_failed", "查询失败")
 		return
 	}
 	if len(assets) == 0 {
-		httpx.Err(w, http.StatusConflict, "nothing_to_export", "没有通过质检的结果可导出")
+		if hasMarks {
+			httpx.Err(w, http.StatusConflict, "nothing_to_export", "当前主版本没有可导出的结果")
+		} else {
+			httpx.Err(w, http.StatusConflict, "nothing_to_export", "没有通过质检的结果可导出")
+		}
 		return
 	}
 

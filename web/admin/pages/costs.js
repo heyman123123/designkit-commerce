@@ -1,100 +1,183 @@
 /* 成本看板：#/costs
- * 数据来自 GET /v1/admin/usage（usage_ledger 汇总，Top 20）。
- * 后端返回的字段名是 Go 结构体字段（WorkspaceID / Cost），这里两种写法都兼容。
+ * GET /v1/admin/costs?days= → 按天趋势 + 模板/租户/事件排行；GET /v1/admin/overview → 营收与毛利。
+ * 无图表库：趋势用 CSS 柱状，排行用表格 + 内嵌占比条。
  */
 
 import { ui, $ } from '../../assets/core.js';
-import { adminApi, errorHTML, bindRetry, fmt } from '../admin-core.js';
+import { adminApi, errorHTML, bindRetry, notWired, fmt } from '../admin-core.js';
 
-const state = { total: 0, top: [], tenants: new Map() };
+const state = { days: 30, cost: null, overview: null, tenants: new Map() };
 
-function normalizeTop(rows) {
-  return (rows || []).map((r) => ({
-    workspace_id: r.WorkspaceID || r.workspace_id || '',
-    cost_cents: Number(r.Cost != null ? r.Cost : r.cost_cents || 0),
-  }));
-}
+const TEMPLATE_LABEL = { main: '主图', scene: '场景图', selling_point: '卖点图', unknown: '未知' };
+const EVENT_LABEL = { sku_created: '创建 SKU', export: '导出', generation: '生成', unknown: '未知' };
+
+const DAY_OPTIONS = [
+  [7, '近 7 天'],
+  [30, '近 30 天'],
+  [90, '近 90 天'],
+  [365, '近 365 天'],
+];
 
 function shellHTML() {
   return `<div class="page-head">
     <div class="ph-main">
       <h1>成本看板</h1>
-      <p class="page-sub">来源 usage_ledger 累计成本；仅展示成本最高的 20 个租户。</p>
+      <p class="page-sub">来源 usage_ledger；趋势按天聚合，排行为所选区间内累计。</p>
     </div>
     <div class="ph-actions">
+      <select class="select" id="c-days" aria-label="选择统计区间">
+        ${DAY_OPTIONS.map(([v, l]) => `<option value="${v}" ${v === state.days ? 'selected' : ''}>${l}</option>`).join('')}
+      </select>
       <button class="btn sm" id="c-refresh" type="button">刷新</button>
     </div>
   </div>
 
-  <div class="grid three mb-16" id="c-kpis">
-    <div class="kpi"><div class="k-label">平台累计成本</div><div class="k-value" id="k-total">—</div><div class="k-note">全部租户 usage_ledger 求和</div></div>
-    <div class="kpi"><div class="k-label">Top 租户数</div><div class="k-value" id="k-count">—</div><div class="k-note">后端固定取前 20 名</div></div>
-    <div class="kpi"><div class="k-label">最大单一租户占比</div><div class="k-value" id="k-share">—</div><div class="k-note">占总成本比例</div></div>
+  <div class="grid four mb-16">
+    <div class="kpi">
+      <div class="k-label" id="k-cost-label">区间成本</div>
+      <div class="k-value" id="k-cost">—</div>
+      <div class="k-note" id="k-cost-note">usage_ledger 求和</div>
+    </div>
+    <div class="kpi"><div class="k-label">累计营收</div><div class="k-value" id="k-revenue">—</div><div class="k-note">已支付订单总额</div></div>
+    <div class="kpi"><div class="k-label">累计毛利</div><div class="k-value" id="k-margin">—</div><div class="k-note">营收 − 累计成本</div></div>
+    <div class="kpi"><div class="k-label">待处理</div><div class="k-value" id="k-pending">—</div><div class="k-note">待支付订单 / 未结风控</div></div>
   </div>
 
-  <div id="c-list">${ui.loading('正在汇总成本…')}</div>
+  <div id="c-body">${ui.loading('正在汇总成本…')}</div>
 
   <div class="callout info mt-16">
-    <b>更多成本维度待接入</b>
+    <b>成本口径</b>
     <p class="muted small mt-8">
-      当前只有「按租户累计」。按天趋势、按模板/项目拆分、毛利与阈值告警需要后端聚合接口，页面已预留位置。
+      成本来自生成与导出的 usage_ledger 流水；模板维度只统计 <code class="code-inline">generation</code> 事件。
+      毛利为全量营收减全量成本，未计入人工与基础设施开销。
     </p>
-    <div class="nw-apis">
-      <code class="code-inline">GET /v1/admin/usage?group_by=day&amp;from=&amp;to=</code>
-      <code class="code-inline">GET /v1/admin/usage?group_by=template</code>
-      <code class="code-inline">GET /v1/admin/costs/summary</code>
-    </div>
   </div>`;
 }
 
-function barListHTML(rows) {
+function trendHTML() {
+  const rows = (state.cost && state.cost.by_day) || [];
   if (!rows.length) {
     return ui.empty({
       icon: '◭',
-      title: '还没有产生任何用量成本',
-      sub: '租户创建 SKU、生成或导出后，成本会累计进 usage_ledger 并显示在这里。',
-      action: '<button class="btn sm mt-8" data-retry>刷新</button>',
+      title: '区间内没有成本记录',
+      sub: '换一个统计区间，或等待租户产生生成/导出用量。',
     });
   }
-  const total = state.total || rows.reduce((s, r) => s + r.cost_cents, 0);
-  const max = Math.max(...rows.map((r) => r.cost_cents), 1);
-
-  const items = rows
+  const max = Math.max(...rows.map((r) => Number(r.cost_cents) || 0), 1);
+  const step = Math.max(1, Math.ceil(rows.length / 10));
+  const cols = rows
     .map((r, i) => {
-      const t = state.tenants.get(r.workspace_id);
-      const name = t ? t.name : '未知租户';
-      const sub = t ? `${t.slug || '—'} · ${ui.label(t.plan)}` : fmt.shortId(r.workspace_id);
-      const share = total ? (r.cost_cents / total) * 100 : 0;
-      const width = Math.max(2, Math.round((r.cost_cents / max) * 100));
-      return `<div class="bar-row">
-        <div class="br-rank">${i + 1}</div>
-        <div class="br-name">
-          <div class="cell-title">${ui.esc(name)}</div>
-          <div class="muted small">${ui.esc(sub)}</div>
-        </div>
-        <div class="br-track"><div class="br-fill" style="width:${width}%"></div></div>
-        <div class="br-cost">${fmt.money(r.cost_cents)}</div>
-        <div class="br-share">${share ? share.toFixed(1) + '%' : '0%'}</div>
+      const v = Number(r.cost_cents) || 0;
+      const h = v ? Math.max(2, Math.round((v / max) * 100)) : 0;
+      const label = String(r.key || '').slice(5);
+      return `<div class="tr-col" title="${ui.esc(r.key)} · ${fmt.money(v)} · ${fmt.num(r.count)} 笔">
+        <div class="tr-bar ${v ? '' : 'zero'}" style="height:${h}%"></div>
+        <div class="tr-label">${i % step === 0 ? ui.esc(label) : ''}</div>
       </div>`;
     })
     .join('');
-
-  return `<div class="card pad-sm">
-    <div class="bar-head">
-      <span></span><span>租户</span><span>相对最高成本</span><span class="right">成本</span><span class="right">占比</span>
+  return `<div class="trend-wrap">
+    <div class="trend-head">
+      <span class="muted small">${ui.esc((rows[0] && rows[0].key) || '')} → ${ui.esc((rows[rows.length - 1] && rows[rows.length - 1].key) || '')}</span>
+      <span class="muted small">峰值 ${fmt.money(max)}</span>
     </div>
-    <div class="bar-list">${items}</div>
+    <div class="trend">${cols}</div>
   </div>`;
+}
+
+function rankHTML(rows, label) {
+  if (!rows.length) {
+    return ui.empty({ icon: '◭', title: '暂无数据', sub: '该维度在区间内没有成本记录。' });
+  }
+  const max = Math.max(...rows.map((r) => Number(r.cost_cents) || 0), 1);
+  const total = rows.reduce((s, r) => s + (Number(r.cost_cents) || 0), 0) || 1;
+  return `<div class="table-wrap"><table class="table dense">
+    <thead><tr><th class="shrink">#</th><th>${ui.esc(label)}</th><th>占比</th><th class="right">成本</th><th class="right">笔数</th></tr></thead>
+    <tbody>${rows
+      .map((r, i) => {
+        const v = Number(r.cost_cents) || 0;
+        const w = Math.max(1, Math.round((v / max) * 100));
+        const share = ((v / total) * 100).toFixed(1);
+        return `<tr>
+          <td class="muted small">${i + 1}</td>
+          <td>
+            <div class="cell-title">${ui.esc(r.display || r.key || '—')}</div>
+            ${r.sub ? `<div class="muted small">${ui.esc(r.sub)}</div>` : ''}
+          </td>
+          <td class="rank-bar-cell"><div class="mini-bar"><i style="width:${w}%"></i></div></td>
+          <td class="num"><b>${fmt.money(v)}</b><div class="muted small">${share}%</div></td>
+          <td class="num muted">${fmt.num(r.count)}</td>
+        </tr>`;
+      })
+      .join('')}</tbody>
+  </table></div>`;
+}
+
+function bodyHTML() {
+  const cost = state.cost || {};
+  const byTemplate = (cost.by_template || []).map((r) => ({
+    ...r,
+    display: TEMPLATE_LABEL[r.key] || r.key,
+    sub: r.key,
+  }));
+  const byTenant = (cost.by_tenant || []).slice(0, 15).map((r) => {
+    const t = state.tenants.get(r.key);
+    return { ...r, display: r.name || (t && t.name) || '未知租户', sub: t ? t.slug : fmt.shortId(r.key) };
+  });
+  const byEvent = (cost.by_event || []).map((r) => ({ ...r, display: EVENT_LABEL[r.key] || r.key }));
+
+  return `<div class="grid two mb-16">
+      <div class="card">
+        <div class="card-head"><h2>成本趋势</h2><span class="chip">${fmt.num(state.days)} 天</span></div>
+        ${trendHTML()}
+      </div>
+      <div class="card">
+        <div class="card-head"><h2>模板成本排行</h2><span class="chip">generation</span></div>
+        ${rankHTML(byTemplate, '模板')}
+      </div>
+    </div>
+
+    <div class="card mb-16">
+      <div class="card-head"><h2>租户成本排行</h2><span class="chip">Top ${fmt.num(byTenant.length)}</span></div>
+      ${rankHTML(byTenant, '租户')}
+    </div>
+
+    <div class="grid two">
+      <div class="card">
+        <div class="card-head"><h2>事件成本</h2></div>
+        ${rankHTML(byEvent, '事件')}
+      </div>
+      <div class="card">
+        <div class="card-head"><h2>暂未提供的维度</h2></div>
+        ${notWired({
+          title: '项目 / SKU / 供应商维度',
+          desc: '当前 /v1/admin/costs 只聚合天、模板、租户与事件；usage_ledger 里没有 project_id、sku_id、provider，所以这三个维度暂时无法出数。',
+          apis: ['GET /v1/admin/costs?group_by=project', 'GET /v1/admin/costs?group_by=provider'],
+        })}
+        <p class="hint mt-16">毛利告警阈值与按供应商拆分的成本也尚未接入。</p>
+      </div>
+    </div>`;
 }
 
 export async function page({ root }) {
   root.innerHTML = shellHTML();
 
-  const list = $('#c-list');
+  const daysSel = $('#c-days');
+  const body = $('#c-body');
+
   $('#c-refresh').onclick = () => load();
+  daysSel.onchange = () => {
+    state.days = Number(daysSel.value) || 30;
+    load();
+  };
 
   async function load() {
-    list.innerHTML = ui.loading('正在汇总成本…');
+    body.innerHTML = ui.loading('正在汇总成本…');
+    ['k-cost', 'k-revenue', 'k-margin', 'k-pending'].forEach((id) => {
+      const el = document.getElementById(id);
+      if (el) el.textContent = '—';
+    });
+
     const tenantsPromise = adminApi
       .get('/v1/admin/tenants')
       .then((d) => {
@@ -105,30 +188,38 @@ export async function page({ root }) {
       });
 
     try {
-      const [usage] = await Promise.all([adminApi.get('/v1/admin/usage'), tenantsPromise]);
-      state.total = Number(usage.total_cost_cents) || 0;
-      state.top = normalizeTop(usage.top);
+      const [cost, overview] = await Promise.all([
+        adminApi.get(`/v1/admin/costs?days=${state.days}`),
+        adminApi.get('/v1/admin/overview'),
+        tenantsPromise,
+      ]);
+      state.cost = cost;
+      state.overview = overview;
       render();
     } catch (err) {
-      $('#k-total').textContent = '—';
-      $('#k-count').textContent = '—';
-      $('#k-share').textContent = '—';
-      list.innerHTML = errorHTML(err);
-      bindRetry(list, load);
+      body.innerHTML = errorHTML(err);
+      bindRetry(body, load);
     }
   }
 
   function render() {
-    const total = state.total;
-    const rows = state.top;
-    const maxCost = rows.length ? Math.max(...rows.map((r) => r.cost_cents)) : 0;
+    const cost = state.cost || {};
+    const ov = state.overview || {};
 
-    $('#k-total').textContent = fmt.money(total);
-    $('#k-count').textContent = fmt.num(rows.length);
-    $('#k-share').textContent = total && maxCost ? ((maxCost / total) * 100).toFixed(1) + '%' : '—';
+    $('#k-cost').textContent = fmt.money(cost.total_cost_cents);
+    $('#k-cost-label').textContent = `区间成本（${fmt.num(state.days)} 天）`;
+    $('#k-cost-note').textContent = `${fmt.num((cost.by_day || []).length)} 天有流水`;
+    $('#k-revenue').textContent = fmt.money(ov.revenue_cents);
 
-    list.innerHTML = barListHTML(rows);
-    bindRetry(list, load);
+    const margin = Number(ov.margin_cents) || 0;
+    const marginEl = $('#k-margin');
+    marginEl.textContent = fmt.money(margin);
+    marginEl.classList.toggle('neg', margin < 0);
+
+    $('#k-pending').textContent = `${fmt.num(ov.pending_orders)} / ${fmt.num(ov.open_risks)}`;
+
+    body.innerHTML = bodyHTML();
+    bindRetry(body, load);
   }
 
   await load();

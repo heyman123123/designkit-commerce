@@ -10,9 +10,7 @@ import (
 	"io"
 	"net/http"
 	"path/filepath"
-	"strings"
 
-	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 	"github.com/heyman123123/designkit-commerce/apps/api/internal/httpx"
 	"github.com/heyman123123/designkit-commerce/apps/api/internal/model"
@@ -136,29 +134,4 @@ func (h *Handler) GetAssetContent(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Disposition", "inline; filename=\""+filepath.Base(asset.StorageKey)+"\"")
 	w.WriteHeader(http.StatusOK)
 	_, _ = io.Copy(w, f)
-}
-
-// Presign 返回本地上传地址；接入 S3/R2 后改为返回真实签名 URL。
-func (h *Handler) Presign(w http.ResponseWriter, r *http.Request) {
-	skuUUID, ok := pathID(r, "skuID")
-	if !ok {
-		badRequest(w, "SKU ID 无效")
-		return
-	}
-	if _, err := uuid.Parse(chi.URLParam(r, "skuID")); err != nil {
-		badRequest(w, "SKU ID 无效")
-		return
-	}
-	var sku model.SKU
-	if err := h.DB.First(&sku, "id = ? AND workspace_id = ?", skuUUID, wsID(r)).Error; err != nil {
-		httpx.Err(w, http.StatusNotFound, "not_found", "资源不存在")
-		return
-	}
-	slug := chi.URLParam(r, "workspace")
-	httpx.JSON(w, http.StatusOK, map[string]any{
-		"method":     "POST",
-		"upload_url": fmt.Sprintf("/v1/w/%s/skus/%s/assets", slug, sku.ID),
-		"max_mb":     h.Cfg.MaxUploadMB,
-		"note":       strings.Join([]string{"本地存储占位", "接 S3 后返回预签名直传地址"}, " · "),
-	})
 }

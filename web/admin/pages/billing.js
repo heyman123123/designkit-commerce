@@ -7,8 +7,6 @@ import {
   adminApi,
   errorHTML,
   bindRetry,
-  confirmAction,
-  planBadge,
   toneBadge,
   yuanToCents,
   centsToYuan,
@@ -18,6 +16,8 @@ import * as orders from './billing-orders.js';
 import * as coupons from './billing-coupons.js';
 
 const state = { plans: [], tenants: [] };
+let reloadOrders = null;
+let reloadCoupons = null;
 
 function shellHTML() {
   return `<div class="page-head">
@@ -53,18 +53,26 @@ function shellHTML() {
   <div class="card" id="coupons-section"></div>`;
 }
 
-function planRow(p) {
-  return `<tr>
-    <td>${planBadge(p.code)}</td>
-    <td>${ui.esc(p.name || '—')}</td>
-    <td class="num"><b>${fmt.money(p.price_cents)}</b></td>
-    <td class="num">${fmt.num(p.period_days)} 天</td>
-    <td class="num">${fmt.num(p.sku_quota)}</td>
-    <td class="num">${fmt.num(p.export_quota)}</td>
-    <td>${toneBadge(p.active ? 'good' : 'muted', p.active ? '启用' : '停用')}</td>
-    <td class="num">${fmt.num(p.sort)}</td>
-    <td class="shrink"><button class="btn sm ghost" data-edit="${ui.esc(p.code)}" type="button">编辑</button></td>
-  </tr>`;
+function planCard(p) {
+  return `<div class="plan-card ${p.active ? '' : 'inactive'}">
+    <div class="pc-head">
+      <div>
+        <div class="pc-name">${ui.esc(p.name || p.code)}</div>
+        <div class="mono muted small">${ui.esc(p.code)}</div>
+      </div>
+      ${toneBadge(p.active ? 'good' : 'muted', p.active ? '启用' : '停用')}
+    </div>
+    <div class="pc-price">${fmt.money(p.price_cents)}<span class="pc-period">/ ${fmt.num(p.period_days)} 天</span></div>
+    <div class="pc-quotas">
+      <div><span class="muted small">SKU 配额</span><b>${fmt.num(p.sku_quota)}</b></div>
+      <div><span class="muted small">导出配额</span><b>${fmt.num(p.export_quota)}</b></div>
+    </div>
+    ${p.features ? `<p class="pc-features">${ui.esc(p.features)}</p>` : ''}
+    <div class="pc-foot">
+      <span class="muted small">排序 ${fmt.num(p.sort)}</span>
+      <button class="btn sm ghost" data-edit="${ui.esc(p.code)}" type="button">编辑</button>
+    </div>
+  </div>`;
 }
 
 function plansHTML(items) {
@@ -72,17 +80,11 @@ function plansHTML(items) {
     return ui.empty({
       icon: '◫',
       title: '还没有套餐定义',
-      sub: '后端会在启动时写入默认套餐；如果为空，可手动新建。',
+      sub: '后端启动时会写入默认套餐；如果为空，可手动新建。',
       action: '<button class="btn sm mt-8" data-new>新建套餐</button>',
     });
   }
-  return `<div class="table-wrap"><table class="table dense">
-    <thead><tr>
-      <th>套餐</th><th>名称</th><th class="right">价格</th><th class="right">周期</th>
-      <th class="right">SKU 配额</th><th class="right">导出配额</th><th>状态</th><th class="right">排序</th><th class="shrink"></th>
-    </tr></thead>
-    <tbody>${items.map(planRow).join('')}</tbody>
-  </table></div>`;
+  return `<div class="plan-grid">${items.map(planCard).join('')}</div>`;
 }
 
 function planForm(p) {
@@ -195,7 +197,7 @@ export async function page({ root }) {
   root.innerHTML = shellHTML();
 
   const list = $('#p-list');
-  $('#b-refresh').onclick = () => location.reload();
+  $('#b-refresh').onclick = () => refreshAll();
 
   async function loadPlans() {
     list.innerHTML = ui.loading('正在加载套餐…');
@@ -237,6 +239,10 @@ export async function page({ root }) {
   await Promise.all([loadPlans(), loadTenants()]);
 
   const ctx = { tenants: state.tenants, plans: state.plans };
-  await orders.loadInto($('#orders-section'), ctx);
-  await coupons.loadInto($('#coupons-section'));
+  reloadOrders = await orders.loadInto($('#orders-section'), ctx);
+  reloadCoupons = await coupons.loadInto($('#coupons-section'));
+
+  async function refreshAll() {
+    await Promise.all([loadPlans(), loadTenants(), reloadOrders && reloadOrders(), reloadCoupons && reloadCoupons()]);
+  }
 }

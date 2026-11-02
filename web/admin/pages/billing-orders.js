@@ -167,12 +167,20 @@ async function openOrderForm(reload) {
   });
 
   const planSel = m.body.querySelector('#of-plan');
+  const tenantSel = m.body.querySelector('#of-tenant');
   const amount = m.body.querySelector('#of-amount');
   const syncPrice = () => {
     const opt = planSel.selectedOptions[0];
     if (opt) amount.value = centsToYuan(opt.dataset.price);
   };
   planSel.onchange = syncPrice;
+  // 默认选中租户当前套餐，避免人工开通时选错档位。
+  tenantSel.onchange = () => {
+    const t = state.tenants.find((x) => x.id === tenantSel.value);
+    if (t && state.plans.some((p) => p.code === t.plan)) planSel.value = t.plan;
+    syncPrice();
+  };
+  tenantSel.onchange();
   syncPrice();
 }
 

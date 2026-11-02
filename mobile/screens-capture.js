@@ -347,7 +347,8 @@ export default function renderCapture({ root }) {
   });
   Object.values(inputs).forEach((input) => {
     input.addEventListener('change', () => {
-      const files = input.files;
+      /* 注意：先复制成数组再清空 value —— FileList 是实时的，清空后原引用会变成 0 张 */
+      const files = Array.from(input.files || []);
       input.value = '';
       handleFiles(files);
     });

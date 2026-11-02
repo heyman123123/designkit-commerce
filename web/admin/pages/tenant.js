@@ -10,17 +10,21 @@ import {
   confirmAction,
   planBadge,
   statusBadge,
+  orderBadge,
   quotaCell,
   setCrumb,
   fmt,
 } from '../admin-core.js';
 
-const PLANS = [
-  ['free', '免费版'],
-  ['starter', '入门版'],
-  ['growth', '成长版'],
-  ['pro', '专业版'],
-];
+let plans = [];
+let orders = [];
+
+/** 套餐下拉来自后端套餐表；当前套餐不在表里时也要能显示，避免误改。 */
+function planOptions(current) {
+  const opts = plans.map((p) => [p.code, p.name || p.code]);
+  if (current && !opts.some(([v]) => v === current)) opts.push([current, `${ui.label(current)}（当前）`]);
+  return opts.map(([v, l]) => `<option value="${ui.esc(v)}" ${v === current ? 'selected' : ''}>${ui.esc(l)}</option>`).join('');
+}
 
 const EDITABLE_STATUS = [
   ['active', '正常'],
@@ -111,7 +115,7 @@ function detailHTML(d) {
           <div class="field">
             <label for="f-plan">套餐</label>
             <select class="select" id="f-plan">
-              ${PLANS.map(([v, l]) => `<option value="${v}" ${v === ws.plan ? 'selected' : ''}>${l}</option>`).join('')}
+              ${planOptions(ws.plan)}
             </select>
           </div>
           <div class="field">
@@ -141,6 +145,36 @@ function detailHTML(d) {
     </div>
   </div>
 
+  <div class="card mt-16">
+    <div class="card-head">
+      <h2>订阅与订单</h2>
+      <span class="chip">人工开通</span>
+      <div class="grow"></div>
+      <span class="chip">${fmt.num(orders.length)} 单</span>
+    </div>
+    <div class="grid two" style="gap:18px">
+      <div>
+        <h3>套用套餐</h3>
+        <p class="hint mt-8">按套餐定义覆盖该租户的套餐、SKU 配额与导出配额。</p>
+        <div class="row mt-8 wrap">
+          <select class="select grow" id="d-plan" aria-label="选择要套用的套餐">${planOptions(ws.plan)}</select>
+          <button class="btn sm primary" id="d-apply" type="button">套用套餐</button>
+        </div>
+      </div>
+      <div>
+        <h3>延长试用</h3>
+        <p class="hint mt-8">在当前到期时间上顺延，并把租户状态置为正常。</p>
+        <div class="row mt-8 wrap">
+          <input class="input" id="d-days" type="number" min="1" max="365" step="1" value="7" style="max-width:110px" aria-label="延长天数" />
+          <span class="muted small">天</span>
+          <button class="btn sm" id="d-trial" type="button">延长试用</button>
+        </div>
+      </div>
+    </div>
+    <div class="divider"></div>
+    ${ordersHTML()}
+  </div>
+
   <div class="card danger-zone mt-16">
     <div class="card-head">
       <h2>${suspended ? '恢复租户' : '危险操作'}</h2>
@@ -156,6 +190,32 @@ function detailHTML(d) {
     </button>
     <p class="hint mt-8">操作会记入审计日志（admin.tenant.suspend）。</p>
   </div>`;
+}
+
+function ordersHTML() {
+  if (!orders.length) {
+    return ui.empty({
+      icon: '▤',
+      title: '该租户还没有订单',
+      sub: '人工开通或续费后，订单会显示在这里。',
+      action: '<a class="btn sm mt-8" href="#/billing">去订阅页新建订单</a>',
+    });
+  }
+  return `<div class="table-wrap"><table class="table dense">
+    <thead><tr><th>订单</th><th>套餐</th><th class="right">金额</th><th>状态</th><th>渠道</th><th>时间</th></tr></thead>
+    <tbody>${orders
+      .map(
+        (o) => `<tr>
+        <td><span class="mono">${fmt.shortId(o.id, 10)}</span></td>
+        <td>${planBadge(o.plan_code)}</td>
+        <td class="num">${fmt.money(o.amount_cents)}</td>
+        <td>${orderBadge(o.status)}</td>
+        <td class="muted small">${ui.esc(o.channel || '—')}</td>
+        <td class="muted small">${ui.fmt.dt(o.created_at)}</td>
+      </tr>`,
+      )
+      .join('')}</tbody>
+  </table></div>`;
 }
 
 function diffOf(ws, form) {
@@ -194,9 +254,26 @@ export async function page({ params, root }) {
   root.innerHTML = ui.loading('正在加载租户详情…');
   current = null;
 
+  async function loadMeta() {
+    const id = encodeURIComponent(params.id);
+    await Promise.all([
+      adminApi
+        .get('/v1/admin/plans')
+        .then((d) => { plans = d.items || []; })
+        .catch(() => { plans = []; }),
+      adminApi
+        .get(`/v1/admin/orders?workspace_id=${id}`)
+        .then((d) => { orders = d.items || []; })
+        .catch(() => { orders = []; }),
+    ]);
+  }
+
   async function load() {
     try {
-      const data = await adminApi.get(`/v1/admin/tenants/${encodeURIComponent(params.id)}`);
+      const [data] = await Promise.all([
+        adminApi.get(`/v1/admin/tenants/${encodeURIComponent(params.id)}`),
+        loadMeta(),
+      ]);
       current = data;
       render();
     } catch (err) {
@@ -225,6 +302,12 @@ export async function page({ params, root }) {
     $('#d-refresh').onclick = () => load();
     $('#d-suspend').onclick = () => toggleSuspend();
     $('#d-suspend-2').onclick = () => toggleSuspend();
+
+    const applyBtn = $('#d-apply');
+    if (applyBtn) applyBtn.onclick = () => applyPlan(ws);
+
+    const trialBtn = $('#d-trial');
+    if (trialBtn) trialBtn.onclick = () => extendTrial(ws);
 
     const form = $('#d-form');
     const errorEl = $('#d-error');
@@ -281,6 +364,63 @@ export async function page({ params, root }) {
         btn.textContent = '保存修改';
       }
     };
+  }
+
+  async function applyPlan(ws) {
+    const code = $('#d-plan').value;
+    const p = plans.find((x) => x.code === code);
+    if (!p) {
+      ui.toast('请选择有效套餐', 'bad');
+      return;
+    }
+    const ok = await confirmAction({
+      title: '确认套用套餐',
+      message: `将「${ws.name}」的套餐设为「${p.name || p.code}」，SKU 配额 ${fmt.num(p.sku_quota)}、导出配额 ${fmt.num(p.export_quota)}。`,
+      confirmLabel: '套用套餐',
+      html: '<p class="hint mt-8">会覆盖该租户当前配额，并写入审计日志 admin.tenant.apply_plan。</p>',
+    });
+    if (!ok) return;
+
+    const btn = $('#d-apply');
+    btn.disabled = true;
+    btn.textContent = '套用中…';
+    try {
+      await adminApi.post(`/v1/admin/tenants/${encodeURIComponent(ws.id)}/apply-plan`, { plan_code: code });
+      ui.toast('套餐已套用', 'good');
+      await load();
+    } catch (err) {
+      btn.disabled = false;
+      btn.textContent = '套用套餐';
+      ui.toast(err.message || '套用失败', 'bad');
+    }
+  }
+
+  async function extendTrial(ws) {
+    const days = Number($('#d-days').value);
+    if (!Number.isInteger(days) || days < 1 || days > 365) {
+      ui.toast('延长天数必须是 1-365 的整数', 'bad');
+      return;
+    }
+    const ok = await confirmAction({
+      title: '确认延长试用',
+      message: `为「${ws.name}」延长 ${days} 天试用，并把状态置为正常。`,
+      confirmLabel: '延长试用',
+      html: '<p class="hint mt-8">会写入审计日志 admin.tenant.trial。</p>',
+    });
+    if (!ok) return;
+
+    const btn = $('#d-trial');
+    btn.disabled = true;
+    btn.textContent = '处理中…';
+    try {
+      await adminApi.post(`/v1/admin/tenants/${encodeURIComponent(ws.id)}/trial`, { days });
+      ui.toast(`试用已延长 ${days} 天`, 'good');
+      await load();
+    } catch (err) {
+      btn.disabled = false;
+      btn.textContent = '延长试用';
+      ui.toast(err.message || '延长失败', 'bad');
+    }
   }
 
   async function toggleSuspend() {

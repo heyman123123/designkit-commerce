@@ -5,22 +5,28 @@
 
 import { router } from '../web/assets/core.js';
 import { get, post, wsPath, assetURL } from './api.js';
+import { connectJobEvents } from './events.js';
 import {
   esc, toast, loading, setBusy, setCleanup, friendlyError, jobStatus, isActive,
   templateName, confirmSheet, promptSheet,
 } from './ui.js';
 
 let poll = null;
+let stopStream = null;
 
-function stopPoll() {
+function stopRealtime() {
   if (poll) {
     clearInterval(poll);
     poll = null;
   }
+  if (stopStream) {
+    stopStream();
+    stopStream = null;
+  }
 }
 
 export default async function renderJob({ root, params, query }) {
-  stopPoll();
+  stopRealtime();
   const jobId = params.id;
   const from = (query && query.from) || '/jobs';
 
@@ -173,20 +179,38 @@ export default async function renderJob({ root, params, query }) {
   }
 
   if (active) {
-    poll = setInterval(async () => {
-      if (document.hidden) return;
-      try {
-        const next = await get(wsPath(`/jobs/${jobId}`));
-        if (next.status !== job.status || next.review_status !== job.review_status) {
-          renderJob({ root, params, query });
-        }
-      } catch {
-        /* 静默，详情页可手动返回刷新 */
+    // SSE 优先：只处理当前任务的事件；连接不可用时退回 2 秒轮询。
+    stopStream = connectJobEvents((next) => {
+      if (!next || next.id !== jobId) return;
+      if (next.status !== job.status || next.review_status !== job.review_status) {
+        renderJob({ root, params, query });
+        return;
       }
-    }, 2000);
+      if (isActive(next) && next.progress !== job.progress) {
+        job = { ...job, ...next };
+        const bar = root.querySelector('.job-progress > i');
+        if (bar) bar.style.width = `${Math.max(2, Math.min(100, next.progress || 0))}%`;
+        const pill = root.querySelector('.job-status-head .badge');
+        if (pill) pill.textContent = jobStatus(next).label;
+      }
+    });
+
+    if (!stopStream) {
+      poll = setInterval(async () => {
+        if (document.hidden) return;
+        try {
+          const next = await get(wsPath(`/jobs/${jobId}`));
+          if (next.status !== job.status || next.review_status !== job.review_status) {
+            renderJob({ root, params, query });
+          }
+        } catch {
+          /* 静默，详情页可手动返回刷新 */
+        }
+      }, 2000);
+    }
   }
 
-  setCleanup(stopPoll);
+  setCleanup(stopRealtime);
 }
 
 function fmtTime(value) {

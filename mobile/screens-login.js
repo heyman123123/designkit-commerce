@@ -7,7 +7,7 @@
 
 import { session, router } from '../web/assets/core.js';
 import { request } from './api.js';
-import { esc, setBusy, friendlyError } from './ui.js';
+import { setBusy, friendlyError } from './ui.js';
 
 const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 

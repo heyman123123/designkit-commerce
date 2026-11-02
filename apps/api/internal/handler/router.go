@@ -69,7 +69,9 @@ func NewRouter(d Deps) http.Handler {
 
 			r.Get("/assets", h.ListAssets)
 			r.With(httpmw.RequireWrite).Post("/skus/{skuID}/assets", h.UploadAsset)
-			r.With(httpmw.RequireWrite).Get("/skus/{skuID}/presign", h.Presign)
+			r.With(httpmw.RequireWrite).Get("/skus/{skuID}/presign", h.PresignUpload)
+			r.With(httpmw.RequireWrite).Post("/skus/{skuID}/assets/complete", h.CompleteUpload)
+			r.Get("/skus/{skuID}/compare", h.CompareVersions)
 			r.Get("/assets/{assetID}/content", h.GetAssetContent)
 			r.With(httpmw.RequireWrite).Get("/skus/{skuID}/export", h.ExportSKU)
 			r.Get("/skus/{skuID}/versions", h.ListVersions)
@@ -79,6 +81,8 @@ func NewRouter(d Deps) http.Handler {
 			r.With(httpmw.RequireWrite).Post("/jobs", h.CreateJob)
 			r.Get("/jobs/{jobID}", h.GetJob)
 			r.With(httpmw.RequireReview).Post("/jobs/{jobID}/review", h.ReviewJob)
+			r.With(httpmw.RequireReview).Post("/jobs/review-batch", h.ReviewBatch)
+			r.With(httpmw.RequireWrite).Post("/exports/batch", h.ExportBatch)
 		})
 
 		// 平台后台：独立 audience，租户令牌无法访问。
