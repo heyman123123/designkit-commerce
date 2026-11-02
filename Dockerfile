@@ -15,6 +15,7 @@ COPY --from=build /out/api /app/api
 COPY --from=build /out/worker /app/worker
 # 三个前端入口由 Go 直接托管（零构建静态文件）
 COPY web /app/web
+COPY mobile /app/mobile
 RUN mkdir -p /app/data/storage && chown -R app:app /app
 USER app
 ENV APP_ADDR=:8080 APP_ENV=prod DB_DRIVER=postgres STORAGE_DIR=/app/data/storage \

@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="robots" content="noindex" />
+  <title>DesignKit · 运营管理后台</title>
+  <link rel="stylesheet" href="../assets/app.css" />
+  <link rel="stylesheet" href="./admin.css" />
+</head>
+<body>
+  <!-- 登录：独立全屏入口，与用户端完全隔离 -->
+  <div id="login-root" class="hidden"></div>
+
+  <!-- 后台外壳：深色侧栏 + 密集表格工作区 -->
+  <div id="shell" class="shell admin-shell hidden">
+    <aside class="sidebar admin-sidebar">
+      <div class="brand">
+        <div class="brand-mark">DK</div>
+        <div class="brand-text">
+          <div class="brand-name">DesignKit</div>
+          <div class="brand-sub">Platform Console</div>
+        </div>
+      </div>
+
+      <div class="side-note"><span class="dot"></span>平台运营控制台</div>
+
+      <nav class="nav" id="nav" aria-label="后台导航">
+        <div class="nav-group">运营</div>
+        <a class="nav-item" data-route="/tenants" href="#/tenants"><span class="ni">▤</span><span class="label">租户</span></a>
+        <a class="nav-item" data-route="/billing" href="#/billing"><span class="ni">◫</span><span class="label">订阅与计费</span></a>
+        <a class="nav-item" data-route="/costs" href="#/costs"><span class="ni">◭</span><span class="label">成本看板</span></a>
+
+        <div class="nav-group">运维</div>
+        <a class="nav-item" data-route="/jobs" href="#/jobs"><span class="ni">⟳</span><span class="label">失败任务</span><span class="count" data-count="jobs"></span></a>
+        <a class="nav-item" data-route="/risk" href="#/risk"><span class="ni">⚑</span><span class="label">风控</span></a>
+
+        <div class="nav-group">系统</div>
+        <a class="nav-item" data-route="/config" href="#/config"><span class="ni">⚙</span><span class="label">平台配置</span></a>
+        <a class="nav-item" data-route="/audit" href="#/audit"><span class="ni">≡</span><span class="label">审计日志</span></a>
+      </nav>
+
+      <div class="sidebar-foot">
+        <div class="user-chip">
+          <div class="avatar" id="admin-avatar">A</div>
+          <div class="u-meta">
+            <div class="u-name" id="admin-name">—</div>
+            <div class="u-mail" id="admin-email"></div>
+          </div>
+        </div>
+        <button class="btn ghost sm block" id="logout-btn" type="button">退出登录</button>
+      </div>
+    </aside>
+
+    <div class="main">
+      <header class="topbar">
+        <div class="crumb" id="crumb"></div>
+        <div class="spacer"></div>
+        <span class="badge no-dot accent admin-tag">平台管理员</span>
+        <button class="btn ghost sm" id="reload-btn" type="button" title="重新加载当前页">刷新</button>
+      </header>
+      <main class="content" id="page"></main>
+    </div>
+  </div>
+
+  <script type="module" src="./admin.js"></script>
+</body>
+</html>

@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="format-detection" content="telephone=no">
+  <meta name="theme-color" content="#0b0d12" media="(prefers-color-scheme: dark)">
+  <meta name="theme-color" content="#f6f7fb" media="(prefers-color-scheme: light)">
+  <meta name="description" content="DesignKit 移动端：拍照上传、生成进度、审核与分享。">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="DesignKit">
+  <title>DesignKit · 移动端</title>
+
+  <link rel="manifest" href="./manifest.webmanifest">
+  <link rel="icon" type="image/png" sizes="192x192" href="./icons/icon-192.png">
+  <link rel="apple-touch-icon" sizes="180x180" href="./icons/apple-touch-icon.png">
+  <!-- 共享设计系统（Web 工作台 / 管理后台 / 移动端同一套 token 与组件） -->
+  <link rel="stylesheet" href="../web/assets/app.css">
+  <link rel="stylesheet" href="./mobile.css">
+</head>
+<body>
+  <div class="app">
+    <main id="view" class="view" role="main"></main>
+  </div>
+  <noscript>
+    <p style="padding:24px;color:#e9edf6;background:#0b0d12">DesignKit 移动端需要开启 JavaScript 才能使用。</p>
+  </noscript>
+  <script type="module" src="./app.js"></script>
+</body>
+</html>

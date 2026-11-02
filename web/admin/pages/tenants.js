@@ -1,0 +1,158 @@
+/* 租户列表：#/tenants
+ * 搜索 + 状态筛选 + 配额进度 + 成本；筛选状态在模块内保留，切页返回不丢。
+ */
+
+import { ui, $, $$, debounce } from '../../assets/core.js';
+import {
+  adminApi,
+  errorHTML,
+  bindRetry,
+  planBadge,
+  statusBadge,
+  quotaCell,
+  fmt,
+} from '../admin-core.js';
+
+const state = { q: '', status: '', items: [], total: 0 };
+
+const STATUS_OPTIONS = [
+  ['', '全部状态'],
+  ['active', '正常'],
+  ['readonly', '只读'],
+  ['suspended', '已暂停'],
+  ['deleted', '已删除'],
+];
+
+function shellHTML() {
+  return `<div class="page-head">
+    <div class="ph-main">
+      <h1>租户</h1>
+      <p class="page-sub" id="t-summary">加载中…</p>
+    </div>
+    <div class="ph-actions">
+      <button class="btn sm" id="t-refresh" type="button">刷新</button>
+    </div>
+  </div>
+
+  <div class="toolbar">
+    <div class="tb-search">
+      <span class="tb-icon">⌕</span>
+      <input class="input" id="t-search" type="search" placeholder="搜索租户名称或 slug" autocomplete="off" />
+    </div>
+    <select class="select tb-select" id="t-status" aria-label="按状态筛选">
+      ${STATUS_OPTIONS.map(([v, l]) => `<option value="${v}">${l}</option>`).join('')}
+    </select>
+    <div class="grow"></div>
+    <span class="chip" id="t-count">—</span>
+  </div>
+
+  <div id="t-list">${ui.loading('正在加载租户…')}</div>`;
+}
+
+function rowHTML(t) {
+  return `<tr class="clickable" data-id="${ui.esc(t.id)}">
+    <td>
+      <div class="cell-title">${ui.esc(t.name || '—')}</div>
+      <div class="mono muted small">${ui.esc(t.slug || '—')}</div>
+    </td>
+    <td class="hide-sm"><span class="small">${ui.esc(t.owner_email || '—')}</span></td>
+    <td>${planBadge(t.plan)}</td>
+    <td>${statusBadge(t.status)}</td>
+    <td class="q-cell">${quotaCell(t.sku_used, t.sku_quota)}</td>
+    <td class="q-cell">${quotaCell(t.export_used, t.export_quota)}</td>
+    <td class="num">${fmt.money(t.cost_cents)}</td>
+    <td class="hide-sm muted small">${ui.esc(t.created_at || '—')}</td>
+    <td class="shrink"><a class="btn sm ghost" href="#/tenants/${encodeURIComponent(t.id)}">详情</a></td>
+  </tr>`;
+}
+
+function listHTML(items) {
+  if (!items.length) {
+    return ui.empty({
+      icon: '▤',
+      title: '没有符合条件的租户',
+      sub: '试试更换关键词，或把状态筛选切回“全部状态”。',
+      action: '<button class="btn sm mt-8" data-clear>清空筛选</button>',
+    });
+  }
+  return `<div class="table-wrap"><table class="table dense">
+    <thead><tr>
+      <th>租户</th><th class="hide-sm">Owner</th><th>套餐</th><th>状态</th>
+      <th>SKU 配额</th><th>导出配额</th><th class="right">累计成本</th>
+      <th class="hide-sm">创建</th><th class="shrink"></th>
+    </tr></thead>
+    <tbody>${items.map(rowHTML).join('')}</tbody>
+  </table></div>`;
+}
+
+export async function page({ root }) {
+  root.innerHTML = shellHTML();
+
+  const search = $('#t-search');
+  const statusSel = $('#t-status');
+  const summary = $('#t-summary');
+  const countEl = $('#t-count');
+  const list = $('#t-list');
+
+  search.value = state.q;
+  statusSel.value = state.status;
+
+  const clearFilters = () => {
+    state.q = '';
+    state.status = '';
+    search.value = '';
+    statusSel.value = '';
+    load();
+  };
+
+  $('#t-refresh').onclick = () => load();
+  search.oninput = debounce(() => {
+    state.q = search.value.trim();
+    load();
+  }, 300);
+  statusSel.onchange = () => {
+    state.status = statusSel.value;
+    load();
+  };
+
+  async function load() {
+    list.innerHTML = ui.loading('正在加载租户…');
+    summary.textContent = '加载中…';
+    countEl.textContent = '—';
+
+    const qs = new URLSearchParams();
+    if (state.q) qs.set('q', state.q);
+    if (state.status) qs.set('status', state.status);
+    const suffix = qs.toString() ? `?${qs}` : '';
+
+    try {
+      const data = await adminApi.get(`/v1/admin/tenants${suffix}`);
+      state.items = data.items || [];
+      state.total = Number(data.total) || state.items.length;
+      render();
+    } catch (err) {
+      summary.textContent = '加载失败';
+      countEl.textContent = '—';
+      list.innerHTML = errorHTML(err);
+      bindRetry(list, load);
+    }
+  }
+
+  function render() {
+    list.innerHTML = listHTML(state.items);
+    countEl.textContent = `共 ${fmt.num(state.total)} 个`;
+    summary.textContent = state.items.length
+      ? `按创建时间倒序，最多展示 100 条；当前 ${fmt.num(state.items.length)} 条。`
+      : '按创建时间倒序，最多展示 100 条。';
+
+    list.querySelector('[data-clear]')?.addEventListener('click', clearFilters);
+    $$('#t-list tbody tr[data-id]', document).forEach((tr) => {
+      tr.onclick = (e) => {
+        if (e.target.closest('a')) return;
+        location.hash = `#/tenants/${encodeURIComponent(tr.dataset.id)}`;
+      };
+    });
+  }
+
+  await load();
+}
