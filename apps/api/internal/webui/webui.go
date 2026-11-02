@@ -17,6 +17,9 @@ func Mount(r interface {
 	Get(string, http.HandlerFunc)
 	Handle(string, http.Handler)
 }, webDir, mobileDir string) {
+	if webDir == "" {
+		return // 测试或纯 API 部署时可以不托管前端
+	}
 	r.Get("/", func(w http.ResponseWriter, req *http.Request) {
 		http.Redirect(w, req, "/app/", http.StatusFound)
 	})

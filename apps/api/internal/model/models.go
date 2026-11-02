@@ -93,6 +93,8 @@ type Asset struct {
 	Width       int       `json:"width"`
 	Height      int       `json:"height"`
 	Status      string    `gorm:"size:32;default:uploaded" json:"status"` // uploaded|analyzed|generated|qc_passed|qc_rejected|frozen
+	QCScore     int       `gorm:"default:0" json:"qc_score"`
+	QCIssues    string    `gorm:"type:text" json:"qc_issues"` // JSON 数组
 }
 
 type GenerationJob struct {
@@ -140,10 +142,20 @@ type RefreshToken struct {
 	Revoked   bool      `gorm:"default:false" json:"revoked"`
 }
 
+// VersionMark 记录某个 SKU 某个模板下当前选中的版本（审核通过或手工指定）。
+type VersionMark struct {
+	Base
+	WorkspaceID uuid.UUID `gorm:"type:uuid;index:idx_vmark,priority:1;not null" json:"workspace_id"`
+	SKUID       uuid.UUID `gorm:"column:sku_id;type:uuid;index:idx_vmark,priority:2;not null" json:"sku_id"`
+	Template    string    `gorm:"size:40;index:idx_vmark,priority:3;not null" json:"template"`
+	JobID       uuid.UUID `gorm:"column:job_id;type:uuid;index:idx_vmark,priority:4;unique;not null" json:"job_id"`
+	IsCurrent   bool      `gorm:"default:false" json:"is_current"`
+}
+
 // All 返回参与自动迁移的模型。
 func All() []any {
 	return []any{
 		&User{}, &Workspace{}, &Member{}, &Project{}, &Folder{}, &SKU{},
-		&Asset{}, &GenerationJob{}, &UsageLedger{}, &AuditLog{}, &RefreshToken{},
+		&Asset{}, &GenerationJob{}, &UsageLedger{}, &AuditLog{}, &RefreshToken{}, &VersionMark{},
 	}
 }

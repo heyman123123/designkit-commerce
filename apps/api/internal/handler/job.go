@@ -185,6 +185,10 @@ func (h *Handler) ReviewJob(w http.ResponseWriter, r *http.Request) {
 				return err
 			}
 		}
+		// 审核通过即把该结果设为对应模板的当前主版本，导出只取主版本。
+		if req.Status == "approved" {
+			return promoteVersion(tx, wsID(r), job.SKUID, job.Template, job.ID)
+		}
 		return nil
 	})
 	if err != nil {
@@ -245,9 +249,34 @@ func (h *Handler) ExportSKU(w http.ResponseWriter, r *http.Request) {
 		httpx.Err(w, http.StatusPaymentRequired, "quota_exceeded", "高清导出额度已用完")
 		return
 	}
+	// 只导出每个模板的当前主版本；没有版本标记时退回全部已通过结果。
+	var marks []model.VersionMark
+	h.DB.Where("workspace_id = ? AND sku_id = ? AND is_current = ?", wsID(r), sku.ID, true).Find(&marks)
+	templateByAsset := map[uuid.UUID]string{}
+	q := h.DB.Where("workspace_id = ? AND sku_id = ? AND kind = ? AND status = ?",
+		wsID(r), sku.ID, "output", "qc_passed")
+	if len(marks) > 0 {
+		jobIDs := make([]uuid.UUID, 0, len(marks))
+		for _, m := range marks {
+			jobIDs = append(jobIDs, m.JobID)
+		}
+		var curJobs []model.GenerationJob
+		h.DB.Where("workspace_id = ? AND id IN ?", wsID(r), jobIDs).Find(&curJobs)
+		assetIDs := make([]uuid.UUID, 0, len(curJobs))
+		for _, j := range curJobs {
+			if j.OutputAssetID != nil {
+				assetIDs = append(assetIDs, *j.OutputAssetID)
+				templateByAsset[*j.OutputAssetID] = j.Template
+			}
+		}
+		if len(assetIDs) == 0 {
+			httpx.Err(w, http.StatusConflict, "nothing_to_export", "当前主版本没有可导出的结果")
+			return
+		}
+		q = q.Where("id IN ?", assetIDs)
+	}
 	var assets []model.Asset
-	if err := h.DB.Where("workspace_id = ? AND sku_id = ? AND kind = ? AND status = ?",
-		wsID(r), sku.ID, "output", "qc_passed").Order("created_at asc").Find(&assets).Error; err != nil {
+	if err := q.Order("created_at asc").Find(&assets).Error; err != nil {
 		httpx.Err(w, http.StatusInternalServerError, "query_failed", "查询失败")
 		return
 	}
@@ -282,8 +311,11 @@ func (h *Handler) ExportSKU(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 		ext := filepath.Ext(a.StorageKey)
-		base := strings.TrimSuffix(filepath.Base(a.StorageKey), ext)
-		name := fmt.Sprintf("%s/%s-%s%s", sku.Code, base, a.ID.String()[:8], ext)
+		label := templateByAsset[a.ID]
+		if label == "" {
+			label = strings.TrimSuffix(filepath.Base(a.StorageKey), ext)
+		}
+		name := fmt.Sprintf("%s/%s-%s%s", sku.Code, label, a.ID.String()[:8], ext)
 		entry, err := zw.Create(name)
 		if err == nil {
 			_, _ = io.Copy(entry, f)

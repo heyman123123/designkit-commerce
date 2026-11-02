@@ -1,0 +1,3 @@
+ALTER TABLE assets DROP COLUMN IF EXISTS qc_issues;
+ALTER TABLE assets DROP COLUMN IF EXISTS qc_score;
+DROP TABLE IF EXISTS asset_version_marks;

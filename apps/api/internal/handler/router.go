@@ -72,6 +72,8 @@ func NewRouter(d Deps) http.Handler {
 			r.With(httpmw.RequireWrite).Get("/skus/{skuID}/presign", h.Presign)
 			r.Get("/assets/{assetID}/content", h.GetAssetContent)
 			r.With(httpmw.RequireWrite).Get("/skus/{skuID}/export", h.ExportSKU)
+			r.Get("/skus/{skuID}/versions", h.ListVersions)
+			r.With(httpmw.RequireWrite).Post("/skus/{skuID}/versions/{jobID}/current", h.PromoteVersion)
 
 			r.Get("/jobs", h.ListJobs)
 			r.With(httpmw.RequireWrite).Post("/jobs", h.CreateJob)

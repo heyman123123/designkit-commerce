@@ -51,6 +51,7 @@ export async function render({ params, query, root }) {
       <div class="tab ${activeTab === 'assets' ? 'active' : ''}" data-tab="assets">素材 · ${sourceAssets.length}</div>
       <div class="tab ${activeTab === 'results' ? 'active' : ''}" data-tab="results">结果与审核 · ${outputAssets.length}</div>
       <div class="tab ${activeTab === 'jobs' ? 'active' : ''}" data-tab="jobs">任务 · ${jobs.length}</div>
+      <div class="tab ${activeTab === 'versions' ? 'active' : ''}" data-tab="versions">版本</div>
       <div class="tab ${activeTab === 'info' ? 'active' : ''}" data-tab="info">信息</div>
     </div>
     <div id="sku-body"></div>`;
@@ -82,6 +83,7 @@ export async function render({ params, query, root }) {
     if (tab === 'assets') return showAssets();
     if (tab === 'results') return showResults();
     if (tab === 'jobs') return showJobs();
+    if (tab === 'versions') return showVersions();
     return showInfo();
   }
 
@@ -200,6 +202,74 @@ export async function render({ params, query, root }) {
         });
       };
     });
+  }
+
+  async function showVersions() {
+    body.innerHTML = ui.loading('正在读取版本链…');
+    let data;
+    try {
+      data = await api.get(api.w(`/skus/${sku.id}/versions`));
+    } catch (err) {
+      body.innerHTML = ui.empty({ icon: '⚠', title: '版本读取失败', sub: err.message });
+      return;
+    }
+    const items = data.items || [];
+    if (!items.length) {
+      body.innerHTML = ui.empty({ icon: '⌘', title: '还没有版本', sub: '生成成功的结果会按模板自动编号，审核通过的结果成为当前版本。' });
+      return;
+    }
+    const groups = {};
+    items.forEach((v) => { (groups[v.template] = groups[v.template] || []).push(v); });
+
+    body.innerHTML = Object.keys(groups).sort().map((t) => `
+      <section class="card mb-16">
+        <div class="card-head"><h2>${ui.esc(TPL[t] || t)}</h2>
+          <span class="chip">${groups[t].length} 个版本</span></div>
+        <div class="thumb-grid">
+          ${groups[t].map((v) => `<div class="thumb" style="aspect-ratio:1">
+            ${v.asset_id ? `<img src="${api.assetURL(v.asset_id)}" loading="lazy" alt="">` : '<div class="empty" style="border:none">无输出</div>'}
+            <div class="t-meta">
+              <span>v${v.version_no}</span>
+              <span style="margin-left:auto">${v.is_current ? ui.badge('good', '当前').replace('class="badge', 'class="badge no-dot') : ui.badge(v.review_status).replace('class="badge', 'class="badge no-dot')}</span>
+            </div>
+          </div>`).join('')}
+        </div>
+        <div class="table-wrap mt-16"><table class="table">
+          <thead><tr><th>版本</th><th>审核</th><th>质检分</th><th>成本</th><th>时间</th><th class="shrink"></th></tr></thead>
+          <tbody>${groups[t].map((v) => `<tr>
+            <td class="mono">v${v.version_no}${v.is_current ? ' · 当前' : ''}</td>
+            <td>${ui.badge(v.review_status)}</td>
+            <td class="num">${v.qc_score || '—'}</td>
+            <td class="num">${ui.fmt.cents(v.cost_cents)}</td>
+            <td class="muted small">${ui.esc(ui.fmt.dt(v.created_at))}</td>
+            <td class="shrink">${v.is_current ? '<span class="muted small">已是当前</span>'
+              : `<button class="btn sm" data-promote="${v.job_id}">设为主版本</button>`}</td>
+          </tr>`).join('')}</tbody>
+        </table></div>
+        ${vIssues(groups[t])}
+      </section>`).join('');
+
+    body.querySelectorAll('[data-promote]').forEach((b) => {
+      b.onclick = async () => {
+        b.disabled = true;
+        try {
+          await api.post(api.w(`/skus/${sku.id}/versions/${b.dataset.promote}/current`), {});
+          ui.toast('已切换当前版本', 'good');
+          showVersions();
+        } catch (err) {
+          ui.toast(err.message, 'bad');
+          b.disabled = false;
+        }
+      };
+    });
+
+    function vIssues(list) {
+      const withIssues = list.filter((v) => v.qc_issues && v.qc_issues !== '[]' && v.qc_issues !== '');
+      if (!withIssues.length) return '';
+      return `<div class="divider"></div><div class="col small">
+        ${withIssues.map((v) => `<div><b>v${v.version_no} 质检问题：</b><span class="muted">${ui.esc(String(v.qc_issues))}</span></div>`).join('')}
+      </div>`;
+    }
   }
 
   function showInfo() {
