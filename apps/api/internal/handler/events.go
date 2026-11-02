@@ -23,7 +23,8 @@ func (h *Handler) Events(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 	flusher.Flush()
 
-	since := time.Now().Add(-2 * time.Minute)
+	// 统一用 UTC 比较：SQLite 里时间按 UTC 存，本地时区直接比较会漏事件。
+	since := time.Now().UTC().Add(-2 * time.Minute)
 	ticker := time.NewTicker(2 * time.Second)
 	defer ticker.Stop()
 	ctx := r.Context()
@@ -43,7 +44,7 @@ func (h *Handler) Events(w http.ResponseWriter, r *http.Request) {
 			})
 			fmt.Fprintf(w, "event: job\ndata: %s\n\n", payload)
 			if job.UpdatedAt.After(since) {
-				since = job.UpdatedAt
+				since = job.UpdatedAt.UTC()
 			}
 		}
 		flusher.Flush()
