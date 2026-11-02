@@ -13,7 +13,7 @@ import {
   fmt,
 } from '../admin-core.js';
 
-const state = { q: '', status: '', items: [], total: 0 };
+const state = { q: '', status: '', items: [], total: 0, page: 1, size: 50 };
 
 const STATUS_OPTIONS = [
   ['', '全部状态'],
@@ -77,6 +77,11 @@ function listHTML(items) {
       action: '<button class="btn sm mt-8" data-clear>清空筛选</button>',
     });
   }
+  const more = state.items.length < state.total
+    ? `<div class="row mt-12" style="justify-content:center">
+        <button class="btn sm" data-more type="button">加载更多（${fmt.num(state.items.length)} / ${fmt.num(state.total)}）</button>
+      </div>`
+    : '';
   return `<div class="table-wrap"><table class="table dense">
     <thead><tr>
       <th>租户</th><th class="hide-sm">Owner</th><th>套餐</th><th>状态</th>
@@ -84,7 +89,7 @@ function listHTML(items) {
       <th class="hide-sm">创建</th><th class="shrink"></th>
     </tr></thead>
     <tbody>${items.map(rowHTML).join('')}</tbody>
-  </table></div>`;
+  </table></div>${more}`;
 }
 
 export async function page({ root }) {
@@ -104,48 +109,56 @@ export async function page({ root }) {
     state.status = '';
     search.value = '';
     statusSel.value = '';
-    load();
+    load({ reset: true });
   };
 
-  $('#t-refresh').onclick = () => load();
+  $('#t-refresh').onclick = () => load({ reset: true });
   search.oninput = debounce(() => {
     state.q = search.value.trim();
-    load();
+    load({ reset: true });
   }, 300);
   statusSel.onchange = () => {
     state.status = statusSel.value;
-    load();
+    load({ reset: true });
   };
 
-  async function load() {
-    list.innerHTML = ui.loading('正在加载租户…');
-    summary.textContent = '加载中…';
-    countEl.textContent = '—';
-
-    const qs = new URLSearchParams();
+  async function load({ reset = true } = {}) {
+    if (reset) {
+      state.page = 1;
+      list.innerHTML = ui.loading('正在加载租户…');
+      summary.textContent = '加载中…';
+      countEl.textContent = '—';
+    }
+    const qs = new URLSearchParams({ page: String(state.page), size: String(state.size) });
     if (state.q) qs.set('q', state.q);
     if (state.status) qs.set('status', state.status);
-    const suffix = qs.toString() ? `?${qs}` : '';
 
     try {
-      const data = await adminApi.get(`/v1/admin/tenants${suffix}`);
-      state.items = data.items || [];
-      state.total = Number(data.total) || state.items.length;
+      const data = await adminApi.get(`/v1/admin/tenants?${qs.toString()}`);
+      const items = data.items || [];
+      state.total = Number(data.total) || items.length;
+      state.items = reset ? items : state.items.concat(items);
       render();
     } catch (err) {
       summary.textContent = '加载失败';
       countEl.textContent = '—';
       list.innerHTML = errorHTML(err);
-      bindRetry(list, load);
+      bindRetry(list, () => load({ reset: true }));
     }
   }
 
   function render() {
     list.innerHTML = listHTML(state.items);
-    countEl.textContent = `共 ${fmt.num(state.total)} 个`;
-    summary.textContent = state.items.length
-      ? `按创建时间倒序，最多展示 100 条；当前 ${fmt.num(state.items.length)} 条。`
-      : '按创建时间倒序，最多展示 100 条。';
+    countEl.textContent = `已加载 ${fmt.num(state.items.length)} / 共 ${fmt.num(state.total)} 个`;
+    summary.textContent = state.total
+      ? `按创建时间倒序，分页加载；共 ${fmt.num(state.total)} 个租户。`
+      : '按创建时间倒序。';
+
+    list.querySelector('[data-more]')?.addEventListener('click', (e) => {
+      e.currentTarget.disabled = true;
+      state.page += 1;
+      load({ reset: false });
+    });
 
     list.querySelector('[data-clear]')?.addEventListener('click', clearFilters);
     $$('#t-list tbody tr[data-id]', document).forEach((tr) => {

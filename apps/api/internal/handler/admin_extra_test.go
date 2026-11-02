@@ -1,6 +1,7 @@
 package handler_test
 
 import (
+	"fmt"
 	"net/http"
 	"testing"
 
@@ -59,5 +60,39 @@ func TestAdminAuditFiltersAndMembers(t *testing.T) {
 	code, _ = e.do(t, http.MethodGet, "/v1/admin/tenants/"+ws.ID.String()+"/members", s.Access, nil)
 	if code != http.StatusUnauthorized && code != http.StatusForbidden {
 		t.Fatalf("tenant token on admin endpoint = %d", code)
+	}
+}
+
+// TestAdminTenantsPagination 租户列表支持分页并返回真实总数。
+func TestAdminTenantsPagination(t *testing.T) {
+	e := newEnv(t)
+	tok := adminToken(t, e)
+	for i := 0; i < 3; i++ {
+		register(t, e, fmt.Sprintf("page%d@example.com", i), fmt.Sprintf("Page Lab %d", i))
+	}
+
+	code, out := e.do(t, http.MethodGet, "/v1/admin/tenants?page=1&size=2", tok, nil)
+	if code != http.StatusOK {
+		t.Fatalf("page1: %d %v", code, out)
+	}
+	if total := int(out["total"].(float64)); total < 3 {
+		t.Fatalf("total = %d, want >= 3", total)
+	}
+	if got := len(out["items"].([]any)); got != 2 {
+		t.Fatalf("page1 items = %d, want 2", got)
+	}
+
+	code, out = e.do(t, http.MethodGet, "/v1/admin/tenants?page=2&size=2", tok, nil)
+	if code != http.StatusOK {
+		t.Fatalf("page2: %d %v", code, out)
+	}
+	if got := len(out["items"].([]any)); got < 1 {
+		t.Fatalf("page2 items = %d, want >= 1", got)
+	}
+
+	// 状态筛选仍生效。
+	code, out = e.do(t, http.MethodGet, "/v1/admin/tenants?status=suspended&size=5", tok, nil)
+	if code != http.StatusOK || len(out["items"].([]any)) != 0 {
+		t.Fatalf("suspended filter: %d %v", code, out)
 	}
 }

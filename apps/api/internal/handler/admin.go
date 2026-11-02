@@ -35,8 +35,14 @@ func (h *Handler) AdminListTenants(w http.ResponseWriter, r *http.Request) {
 	if st := r.URL.Query().Get("status"); st != "" {
 		q = q.Where("status = ?", st)
 	}
+	var total int64
+	if err := q.Count(&total).Error; err != nil {
+		httpx.Err(w, http.StatusInternalServerError, "query_failed", "查询失败")
+		return
+	}
+	page, size := queryPage(r, 50, 100)
 	var list []model.Workspace
-	if err := q.Order("created_at desc").Limit(100).Find(&list).Error; err != nil {
+	if err := q.Order("created_at desc").Offset((page - 1) * size).Limit(size).Find(&list).Error; err != nil {
 		httpx.Err(w, http.StatusInternalServerError, "query_failed", "查询失败")
 		return
 	}
@@ -54,7 +60,9 @@ func (h *Handler) AdminListTenants(w http.ResponseWriter, r *http.Request) {
 			CreatedAt: ws.CreatedAt.Format("2006-01-02"),
 		})
 	}
-	httpx.JSON(w, http.StatusOK, map[string]any{"items": out, "total": len(out)})
+	httpx.JSON(w, http.StatusOK, map[string]any{
+		"items": out, "total": total, "page": page, "size": size,
+	})
 }
 
 func (h *Handler) tenantByPath(w http.ResponseWriter, r *http.Request) (model.Workspace, bool) {
