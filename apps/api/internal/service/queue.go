@@ -3,7 +3,6 @@ package service
 import (
 	"bytes"
 	"context"
-	"errors"
 	"log/slog"
 	"time"
 
@@ -57,18 +56,32 @@ func (r *Runner) logger() *slog.Logger {
 	return slog.Default()
 }
 
-// ProcessOne 认领一个排队任务并执行；没有任务时返回 false。
+// ProcessOne 认领一个排队任务并执行；没有可执行任务时返回 false。
+// 认领前按 attempts 做指数退避，避免失败任务立刻重复消耗上游额度。
 func (r *Runner) ProcessOne(ctx context.Context) (bool, error) {
-	var job model.GenerationJob
+	var candidates []model.GenerationJob
 	err := r.DB.WithContext(ctx).
 		Where("status = ?", "queued").
 		Order("created_at asc").
-		First(&job).Error
-	if errors.Is(err, gorm.ErrRecordNotFound) {
-		return false, nil
-	}
+		Limit(20).
+		Find(&candidates).Error
 	if err != nil {
 		return false, err
+	}
+	if len(candidates) == 0 {
+		return false, nil
+	}
+	var job model.GenerationJob
+	found := false
+	for _, c := range candidates {
+		if eligible(c.Attempts, c.UpdatedAt, time.Now()) {
+			job = c
+			found = true
+			break
+		}
+	}
+	if !found {
+		return false, nil
 	}
 
 	res := r.DB.WithContext(ctx).Model(&model.GenerationJob{}).
@@ -134,8 +147,10 @@ func (r *Runner) execute(ctx context.Context, job *model.GenerationJob) error {
 		return err
 	}
 
+	// 基础质检：分辨率、长宽比、透明通道、白底与文件体积。
+	qc := Assess(gen.Bytes, gen.Mime, job.Template)
 	status := "qc_passed"
-	if gen.Width < 500 || gen.Height < 500 {
+	if !qc.Passed {
 		status = "qc_rejected"
 	}
 
@@ -149,6 +164,8 @@ func (r *Runner) execute(ctx context.Context, job *model.GenerationJob) error {
 		Width:       gen.Width,
 		Height:      gen.Height,
 		Status:      status,
+		QCScore:     qc.Score,
+		QCIssues:    qc.JSON(),
 	}
 	if err := r.DB.WithContext(ctx).Create(&asset).Error; err != nil {
 		return err
@@ -193,6 +210,21 @@ func (r *Runner) fail(ctx context.Context, job *model.GenerationJob, cause error
 	if err != nil {
 		r.logger().Error("mark job failed", "job", job.ID, "err", err)
 	}
+}
+
+// eligible 判断排队任务是否已超过退避时间：5s * 2^attempts，上限 5 分钟。
+func eligible(attempts int, updatedAt time.Time, now time.Time) bool {
+	if attempts <= 0 || updatedAt.IsZero() {
+		return true
+	}
+	delay := 5 * time.Second
+	for i := 1; i < attempts; i++ {
+		delay *= 2
+		if delay >= 5*time.Minute {
+			return now.Sub(updatedAt) >= 5*time.Minute
+		}
+	}
+	return now.Sub(updatedAt) >= delay
 }
 
 func objectKey(ws uuid.UUID, skuCode string, jobID uuid.UUID, template string) string {

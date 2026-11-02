@@ -38,9 +38,12 @@ func main() {
 	}
 
 	seedAdmin(cfg, db)
+	if err := handler.SeedPlatform(db); err != nil {
+		slog.Error("seed platform defaults", "err", err)
+	}
 
 	jwtManager := auth.NewManager(cfg.JWTSecret, cfg.AccessTTL)
-	provider := service.MockProvider{}
+	provider := service.NewProvider()
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()

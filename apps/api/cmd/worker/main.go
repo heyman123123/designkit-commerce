@@ -39,7 +39,7 @@ func main() {
 		cancel()
 	}()
 
-	runner := &service.Runner{DB: db, Store: store, Provider: service.MockProvider{}, Tick: cfg.WorkerTick}
+	runner := &service.Runner{DB: db, Store: store, Provider: service.NewProvider(), Tick: cfg.WorkerTick}
 	slog.Info("worker started", "tick", cfg.WorkerTick.String())
 	runner.Start(ctx)
 	slog.Info("worker stopped")

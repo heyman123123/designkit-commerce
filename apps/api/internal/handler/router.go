@@ -92,6 +92,31 @@ func NewRouter(d Deps) http.Handler {
 			r.Post("/jobs/{jobID}/retry", h.AdminRetryJob)
 			r.Get("/usage", h.AdminUsage)
 			r.Get("/audit", h.AdminAudit)
+			r.Get("/overview", h.AdminOverview)
+			r.Get("/costs", h.AdminCosts)
+
+			r.Get("/plans", h.AdminListPlans)
+			r.Post("/plans", h.AdminUpsertPlan)
+			r.Patch("/plans/{code}", h.AdminUpsertPlan)
+			r.Post("/tenants/{tenantID}/apply-plan", h.AdminApplyPlan)
+			r.Post("/tenants/{tenantID}/trial", h.AdminExtendTrial)
+
+			r.Get("/orders", h.AdminListOrders)
+			r.Post("/orders", h.AdminCreateOrder)
+			r.Post("/orders/{orderID}/refund", h.AdminRefundOrder)
+
+			r.Get("/coupons", h.AdminListCoupons)
+			r.Post("/coupons", h.AdminUpsertCoupon)
+			r.Patch("/coupons/{code}", h.AdminUpsertCoupon)
+
+			r.Get("/risk", h.AdminListRisk)
+			r.Post("/risk", h.AdminCreateRisk)
+			r.Post("/risk/{riskID}/resolve", h.AdminResolveRisk)
+
+			r.Get("/config/templates", h.AdminListTemplates)
+			r.Patch("/config/templates/{code}", h.AdminPatchTemplate)
+			r.Get("/config/flags", h.AdminListFlags)
+			r.Patch("/config/flags/{key}", h.AdminPatchFlag)
 		})
 	})
 

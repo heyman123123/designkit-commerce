@@ -157,5 +157,6 @@ func All() []any {
 	return []any{
 		&User{}, &Workspace{}, &Member{}, &Project{}, &Folder{}, &SKU{},
 		&Asset{}, &GenerationJob{}, &UsageLedger{}, &AuditLog{}, &RefreshToken{}, &VersionMark{},
+		&Plan{}, &Order{}, &Coupon{}, &RiskCase{}, &PlatformTemplate{}, &FeatureFlag{},
 	}
 }

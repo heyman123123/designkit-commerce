@@ -1,0 +1,6 @@
+DROP TABLE IF EXISTS feature_flags;
+DROP TABLE IF EXISTS platform_templates;
+DROP TABLE IF EXISTS risk_cases;
+DROP TABLE IF EXISTS coupons;
+DROP TABLE IF EXISTS orders;
+DROP TABLE IF EXISTS plans;
