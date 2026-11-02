@@ -25,6 +25,8 @@ func Mount(r interface {
 	})
 	r.Handle("/app/*", SPA(filepath.Join(webDir, "app"), "/app/"))
 	r.Handle("/assets/*", Static(filepath.Join(webDir, "assets"), "/assets/"))
+	// 移动端沿用 ../web/assets 相对路径，这里提供别名，避免改两套引用。
+	r.Handle("/web/assets/*", Static(filepath.Join(webDir, "assets"), "/web/assets/"))
 	r.Handle("/admin/*", SPA(filepath.Join(webDir, "admin"), "/admin/"))
 	r.Handle("/m/*", SPA(mobileDir, "/m/"))
 }

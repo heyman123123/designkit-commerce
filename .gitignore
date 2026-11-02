@@ -6,3 +6,6 @@ data/
 bin/
 dist/
 .DS_Store
+.gocache-dev/
+.gocache/
+.gomodcache/
