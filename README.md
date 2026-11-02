@@ -14,9 +14,9 @@
 | 数据库 | PostgreSQL 16（生产）/ SQLite（本地与测试） |
 | 鉴权 | JWT（access + refresh 轮换）、Argon2id |
 | 队列 | Postgres/SQLite 任务表 + 轮询 worker（可换 River） |
-| 存储 | 本地文件系统（接口已抽象，可换 S3/R2） |
+| 存储 | 本地文件系统 / S3 兼容对象存储（R2、MinIO，SigV4 预签名） |
 | 实时 | SSE `/v1/w/{slug}/events` |
-| 图片 | 标准库 `image` + mock provider（可换真实模型） |
+| 图片 | 标准库 `image` + `PROVIDER=mock|openai`（OpenAI 兼容接口） |
 | 前端 | 原生 ES Module + 共享设计系统 CSS（零构建、无 npm） |
 | 托管 | Go 直接托管 `/app/`、`/admin/`、`/m/` 三套静态资源 |
 
@@ -174,6 +174,28 @@ apps/api/
   internal/platform/ 数据库连接
   db/migrations/    生产 SQL（含 RLS）
 ```
+
+## 质检与版本
+
+- 生成完成即自动质检：分辨率、长宽比、透明通道、白底、文件体积，写入 `qc_score` 与 `qc_issues`
+- 同一 SKU 同一模板的多次生成构成版本链；审核通过自动成为当前版本，可手工回滚
+- 导出只打包每个模板的当前版本，文件名带模板前缀
+
+## 供应商与存储切换
+
+```bash
+# 接入真实模型（OpenAI 兼容）
+PROVIDER=openai OPENAI_BASE_URL=https://api.openai.com/v1 \
+OPENAI_API_KEY=sk-... OPENAI_IMAGE_MODEL=gpt-image-1 \
+OPENAI_CHAT_MODEL=gpt-4o-mini go run ./cmd/api
+
+# 切到 S3 / R2（SigV4，本地签名）
+STORAGE_DRIVER=s3 S3_ENDPOINT=https://<account>.r2.cloudflarestorage.com \
+S3_BUCKET=designkit S3_ACCESS_KEY=... S3_SECRET_KEY=... S3_REGION=auto \
+go run ./cmd/api
+```
+
+未配置时默认 `mock` + 本地存储，全部功能仍可跑通。
 
 ## 后续计划
 

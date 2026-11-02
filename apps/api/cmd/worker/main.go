@@ -23,7 +23,7 @@ func main() {
 		slog.Error("open database", "err", err)
 		os.Exit(1)
 	}
-	store, err := storage.NewLocal(cfg.StorageDir)
+	store, err := storage.NewFromEnv(cfg.StorageDir)
 	if err != nil {
 		slog.Error("init storage", "err", err)
 		os.Exit(1)
